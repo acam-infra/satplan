@@ -1244,7 +1244,9 @@ class R3Solver:
     ) -> None:
         for t in range(idx.H):
             bg = 0.0 if edge.bg_bps is None else edge.bg_bps[t]
+            tot_cap_bytes = (problem.dt_s / 8.0) * edge.tot_bps[t]
             cap_bytes = (problem.dt_s / 8.0) * max(0.0, edge.tot_bps[t] - bg)
+            bg_frac = min(1.0, bg / edge.tot_bps[t]) if edge.tot_bps[t] > 0.0 else 0.0
             cb.add([(idx.b_edge(r, e_i, t), 1.0) for r in range(idx.R)], -math.inf, cap_bytes)
 
             if idx.K_max >= 2:
@@ -1266,7 +1268,7 @@ class R3Solver:
                     fair_terms.extend((idx.w(e_i, t, k), -(cap_bytes / k)) for k in range(1, idx.K_max + 1))
                     cb.add(fair_terms, -math.inf, req.kv_bytes)
                 if cap_bytes > 0.0:
-                    self._add_tx_frac_bound(idx, cb, e_i, t, r, cap_bytes, use_terms)
+                    self._add_tx_frac_bound(idx, cb, e_i, t, r, tot_cap_bytes, bg_frac, use_terms)
 
     @staticmethod
     def _add_tx_frac_bound(  # noqa: PLR0913
@@ -1275,19 +1277,20 @@ class R3Solver:
         e_i: int,
         t: int,
         r: int,
-        cap_bytes: float,
+        tot_cap_bytes: float,
+        bg_frac: float,
         use_terms: list[tuple[int, float]],
     ) -> None:
         if idx.K_max >= 2:
             for k in range(1, idx.K_max + 1):
-                terms = [(idx.tx_frac(r, t), 1.0), (idx.b_edge(r, e_i, t), -(k / cap_bytes))]
+                terms = [(idx.tx_frac(r, t), 1.0), (idx.b_edge(r, e_i, t), -(k / tot_cap_bytes))]
                 terms.append((idx.w(e_i, t, k), -float(k)))
                 terms.extend((c, -float(k)) for c, _ in use_terms)
-                cb.add(terms, -2.0 * float(k), math.inf)
+                cb.add(terms, bg_frac - 2.0 * float(k), math.inf)
         else:
-            terms = [(idx.tx_frac(r, t), 1.0), (idx.b_edge(r, e_i, t), -(1.0 / cap_bytes))]
+            terms = [(idx.tx_frac(r, t), 1.0), (idx.b_edge(r, e_i, t), -(1.0 / tot_cap_bytes))]
             terms.extend((c, -1.0) for c, _ in use_terms)
-            cb.add(terms, -1.0, math.inf)
+            cb.add(terms, bg_frac - 1.0, math.inf)
 
     def _add_cvar_constraints(self, problem: R3Problem, idx: _VarLayout, cb: _ConstraintBuilder) -> None:
         miss_lat = (problem.horizon_slots + 1) * problem.dt_s

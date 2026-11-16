@@ -5,6 +5,7 @@ import math
 from typing import TYPE_CHECKING, Any
 
 from satplan.actions import MigrationOrder, PlanAction
+from satplan.net import allocate_max_min_rates
 from satplan.r3_solver import (
     R3EclipseWindowSpec,
     R3EdgeSpec,
@@ -80,34 +81,9 @@ def _validate_planning_dt(dt_s: float, control_period_s: float, interval_s: floa
     return None
 
 
-def _allocate_bg_rates(
-    active: list[int],
+def _refresh_bg_flow_states(  # noqa: PLR0913
     flows: tuple[Any, ...],
-    view: ForecastView,
-) -> dict[int, float]:
-    rates = {i: 0.0 for i in active}
-    rem: dict[tuple[int, int], float] = {}
-    for i in active:
-        for a, b, e in flows[i].hops:
-            rem[(a, b)] = view.edge_cap_Bps(e)
-    live = list(active)
-    while live:
-        users: dict[tuple[int, int], int] = {}
-        for i in live:
-            for a, b, _ in flows[i].hops:
-                users[(a, b)] = users.get((a, b), 0) + 1
-        share = min(rem[k] / c for k, c in users.items())
-        for i in live:
-            rates[i] += share
-            for a, b, _ in flows[i].hops:
-                rem[(a, b)] -= share
-        full = {k for k, v in rem.items() if v <= 1e-6 * max(1.0, share)}
-        live = [i for i in live if not any((a, b) in full for a, b, _ in flows[i].hops)]
-    return rates
-
-
-def _refresh_bg_flow_states(
-    flows: tuple[Any, ...],
+    cur_hops: list[tuple[tuple[int, int, int], ...]],
     done: list[bool],
     failed: list[bool],
     rem: list[float],
@@ -118,21 +94,25 @@ def _refresh_bg_flow_states(
     active: list[int] = []
     next_topo = slot_end
     for i, f in enumerate(flows):
-        if done[i]:
+        if done[i] or not cur_hops[i]:
             continue
-        all_up = all(view.edge_up_at(e, tau) for _, _, e in f.hops)
-        if not all_up:
-            if not failed[i]:
-                failed[i] = True
+        all_up = all(view.edge_up_at(e, tau) for _, _, e in cur_hops[i])
+        if not all_up or failed[i]:
+            if not all_up:
                 rem[i] = float(f.total_bytes)
-        elif failed[i]:
-            failed[i] = False
+            origin = cur_hops[i][0][0]
+            dst = cur_hops[i][-1][1]
+            new_p = view.path_at(origin, dst, tau)
+            if new_p is not None and new_p[1]:
+                cur_hops[i] = tuple((new_p[0][k], new_p[0][k + 1], new_p[1][k]) for k in range(len(new_p[1])))
+                failed[i] = False
+            else:
+                failed[i] = True
+                next_topo = min(next_topo, view.next_conn(origin, dst, tau))
         if not failed[i]:
             active.append(i)
-        for _, _, e in f.hops:
-            nxt = view.edge_up_until(e, tau) if view.edge_up_at(e, tau) else view.next_edge_up(e, tau)
-            if nxt < next_topo:
-                next_topo = nxt
+            for _, _, e in cur_hops[i]:
+                next_topo = min(next_topo, view.edge_up_until(e, tau))
     return active, next_topo
 
 
@@ -144,6 +124,7 @@ def _predict_bg_dir_bps(
     flows = view.background_flow_snapshots()
     if not flows:
         return {}
+    cur_hops = [f.hops for f in flows]
     rem = [float(f.remaining_bytes) for f in flows]
     done = [r <= 1.0 for r in rem]
     failed = [False] * len(flows)
@@ -153,11 +134,11 @@ def _predict_bg_dir_bps(
         tau = view.now + t * dt_s
         slot_end = view.now + (t + 1) * dt_s
         while tau < slot_end - 1e-12:
-            active, next_topo = _refresh_bg_flow_states(flows, done, failed, rem, view, tau, slot_end)
+            active, next_topo = _refresh_bg_flow_states(flows, cur_hops, done, failed, rem, view, tau, slot_end)
             if not active:
                 tau = max(tau + 1e-12, next_topo)
                 continue
-            rates = _allocate_bg_rates(active, flows, view)
+            rates = allocate_max_min_rates([(i, cur_hops[i]) for i in active], view.edge_cap_Bps)
             next_fin = min((tau + rem[i] / rates[i] for i in active if rates[i] > 1e-9), default=slot_end)
             tau_next = max(tau + 1e-12, min(slot_end, next_topo, next_fin))
             span = tau_next - tau
@@ -167,7 +148,7 @@ def _predict_bg_dir_bps(
                 if rem[i] <= 1.0:
                     rem[i] = 0.0
                     done[i] = True
-                for a, b, _ in flows[i].hops:
+                for a, b, _ in cur_hops[i]:
                     bytes_dir[(a, b, t)] = bytes_dir.get((a, b, t), 0.0) + step
             tau = tau_next
 

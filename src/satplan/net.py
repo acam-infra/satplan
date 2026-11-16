@@ -2,9 +2,36 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 import simpy
+
+
+def allocate_max_min_rates(
+    active_hops: Sequence[tuple[int, Sequence[tuple[int, int, int]]]],
+    edge_cap_fn: Callable[[int], float],
+) -> dict[int, float]:
+    """Progressive-filling max-min fair rate allocation over directed hops."""
+    rates = {fid: 0.0 for fid, _ in active_hops}
+    rem: dict[tuple[int, int], float] = {}
+    for _, hops in active_hops:
+        for a, b, e in hops:
+            rem[(a, b)] = edge_cap_fn(e)
+    live = list(active_hops)
+    while live:
+        users: dict[tuple[int, int], int] = defaultdict(int)
+        for _, hops in live:
+            for a, b, _ in hops:
+                users[(a, b)] += 1
+        share = min(rem[k] / c for k, c in users.items())
+        for fid, hops in live:
+            rates[fid] += share
+            for a, b, _ in hops:
+                rem[(a, b)] -= share
+        full = {k for k, v in rem.items() if v <= 1e-6 * max(1.0, share)}
+        live = [(fid, hops) for fid, hops in live if not any((a, b) in full for a, b, _ in hops)]
+    return rates
 
 
 @dataclass(eq=False)
@@ -96,23 +123,14 @@ class FluidNet:
     def _allocate(self) -> None:
         for f in self.flows:
             f.rate = 0.0
-        rem: dict[tuple[int, int], float] = {}
-        for f in self.flows:
-            for a, b, e in f.hops:
-                rem[(a, b)] = self.cap[e]
-        live = list(self.flows)
-        while live:
-            users: dict[tuple[int, int], int] = defaultdict(int)
-            for f in live:
-                for a, b, _ in f.hops:
-                    users[(a, b)] += 1
-            share = min(rem[k] / c for k, c in users.items())
-            for f in live:
-                f.rate += share
-                for a, b, _ in f.hops:
-                    rem[(a, b)] -= share
-            full = {k for k, v in rem.items() if v <= 1e-6 * max(1.0, share)}
-            live = [f for f in live if not any((a, b) in full for a, b, _ in f.hops)]
+        if not self.flows:
+            return
+        rates = allocate_max_min_rates(
+            [(i, f.hops) for i, f in enumerate(self.flows)],
+            lambda e: self.cap[e],
+        )
+        for i, f in enumerate(self.flows):
+            f.rate = rates[i]
 
     def _run(self):
         while True:
