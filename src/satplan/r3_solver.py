@@ -139,9 +139,11 @@ class _VarLayout:
             ("off_g", self.R * self.J * self.H),
             ("off_unlock", self.R * self.J * self.H),
             ("off_tx_just_done", self.R * self.H),
+            ("off_init_chunk_just_done", self.R * self.H),
             ("off_b", self.R * self.H),
             ("off_tx_frac", self.R * self.H),
             ("off_prop_rem", self.R * self.H),
+            ("off_init_prop_rem", self.R * self.H),
             ("off_d", self.R * self.J * self.H),
             ("off_arc", self.R * self.J * self.J * self.H),
             ("off_arc_frozen", self.R * self.H),
@@ -213,6 +215,9 @@ class _VarLayout:
     def tx_just_done(self, r: int, t: int) -> int:
         return self.off_tx_just_done + r * self.H + t
 
+    def init_chunk_just_done(self, r: int, t: int) -> int:
+        return self.off_init_chunk_just_done + r * self.H + t
+
     def comp(self, r: int, t: int) -> int:
         return self.off_comp + r * self.H + t
 
@@ -237,6 +242,9 @@ class _VarLayout:
 
     def prop_rem(self, r: int, t: int) -> int:
         return self.off_prop_rem + r * self.H + t
+
+    def init_prop_rem(self, r: int, t: int) -> int:
+        return self.off_init_prop_rem + r * self.H + t
 
     def d(self, r: int, j: int, t: int) -> int:
         return self.off_d + (r * self.J + j) * self.H + t
@@ -589,7 +597,9 @@ class R3Solver:
         else:
             for t in range(idx.H):
                 ub[idx.init_chunk_done(r, t)] = 0.0
+                ub[idx.init_chunk_just_done(r, t)] = 0.0
                 ub[idx.init_chunk_active(r, t)] = 0.0
+                ub[idx.init_prop_rem(r, t)] = 0.0
                 ub[idx.arc_frozen(r, t)] = 0.0
             if problem.max_mig_per_req is not None and req.n_mig >= problem.max_mig_per_req:
                 for j in range(idx.J):
@@ -619,7 +629,9 @@ class R3Solver:
             return
         for t in range(idx.H):
             ub[idx.init_chunk_done(r, t)] = 0.0
+            ub[idx.init_chunk_just_done(r, t)] = 0.0
             ub[idx.init_chunk_active(r, t)] = 0.0
+            ub[idx.init_prop_rem(r, t)] = 0.0
             ub[idx.arc_frozen(r, t)] = 0.0
         if snap.phase == "propagating_chunk":
             block_slots = max(1, math.ceil(snap.prop_rem_s / problem.dt_s - 1e-9))
@@ -880,15 +892,21 @@ class R3Solver:
                 frozen_by_req.append(req.init_mig_solver_edges or routes.get((j0, d0, 0), ()))
             else:
                 frozen_by_req.append(())
-            self._add_request_net_constraints(idx, cb, r, req, snap)
+            self._add_request_net_constraints(problem, idx, cb, r, req, snap, frozen_by_req[r])
         for e_i, edge in enumerate(problem.edges):
             self._add_edge_fair_constraints(problem, idx, edge_routes_by_t, frozen_by_req, cb, e_i, edge)
 
-    def _add_request_net_constraints(
-        self, idx: _VarLayout, cb: _ConstraintBuilder, r: int, req: R3RequestSpec, snap: MigrationSessionSnapshot | None
+    def _add_request_net_constraints(  # noqa: PLR0913
+        self,
+        problem: R3Problem,
+        idx: _VarLayout,
+        cb: _ConstraintBuilder,
+        r: int,
+        req: R3RequestSpec,
+        snap: MigrationSessionSnapshot | None,
+        frozen_edges: tuple[int, ...],
     ) -> None:
         is_sending = snap is not None and snap.phase == "sending"
-        c_rem = max(0.0, snap.chunk_rem_bytes) if is_sending else 0.0
         for t in range(idx.H):
             cb.add([(idx.tx(r, t), 1.0)] + [(idx.m(r, j, t), -1.0) for j in range(idx.J)], -math.inf, 0.0)
             cb.add([(idx.b(r, t), 1.0), (idx.tx(r, t), -req.kv_bytes)], -math.inf, 0.0)
@@ -899,17 +917,8 @@ class R3Solver:
             cb.add([(idx.arc_frozen(r, t), 1.0), (idx.init_chunk_active(r, t), -1.0)], 0.0, 0.0)
             arc_all = [(idx.arc(r, s, d, t), 1.0) for s in range(idx.J) for d in range(idx.J) if s != d]
             cb.add(arc_all + [(idx.arc_frozen(r, t), 1.0), (idx.tx(r, t), -1.0)], 0.0, 0.0)
-            if is_sending:
-                sum_b = [(idx.b(r, tau), 1.0) for tau in range(t + 1)]
-                cb.add(sum_b + [(idx.init_chunk_done(r, t), -c_rem)], 0.0, math.inf)
-                if t == 0:
-                    cb.add(sum_b, -math.inf, c_rem)
-                else:
-                    cb.add(sum_b + [(idx.init_chunk_done(r, t - 1), -req.kv_bytes)], -math.inf, c_rem)
-                    cb.add([(idx.init_chunk_active(r, t), 1.0), (idx.init_chunk_done(r, t - 1), 1.0)], -math.inf, 1.0)
-                    cb.add([(idx.init_chunk_active(r, t), 1.0), (idx.tx(r, t), -1.0)], -math.inf, 0.0)
-                    unlock_cum = [(idx.unlock(r, j, tau), 1.0) for j in range(idx.J) for tau in range(1, t + 1)]
-                    cb.add([(idx.init_chunk_active(r, t), 1.0), (idx.init_chunk_done(r, t - 1), 1.0)] + unlock_cum, 1.0, math.inf)
+            if is_sending and snap is not None:
+                self._add_init_chunk_slot_constraints(problem, idx, cb, r, req, snap, frozen_edges, t)
             for s in range(idx.J):
                 cb.add(
                     [(idx.arc(r, s, d, t), 1.0) for d in range(idx.J) if d != s] + [(idx.u(r, s, t), -1.0)],
@@ -921,6 +930,64 @@ class R3Solver:
                     [(idx.arc(r, s, d, t), 1.0) for s in range(idx.J) if s != d] + [(idx.m(r, d, t), -1.0)],
                     -math.inf,
                     0.0,
+                )
+
+    @staticmethod
+    def _add_init_chunk_slot_constraints(  # noqa: PLR0913
+        problem: R3Problem,
+        idx: _VarLayout,
+        cb: _ConstraintBuilder,
+        r: int,
+        req: R3RequestSpec,
+        snap: MigrationSessionSnapshot,
+        frozen_edges: tuple[int, ...],
+        t: int,
+    ) -> None:
+        c_rem = max(0.0, snap.chunk_rem_bytes)
+        l_prop = problem.hop_latency_s * len(frozen_edges)
+        m_prop = max(problem.dt_s, l_prop) + problem.dt_s
+        sum_b = [(idx.b(r, tau), 1.0) for tau in range(t + 1)]
+        cb.add(sum_b + [(idx.init_chunk_done(r, t), -c_rem)], 0.0, math.inf)
+        if t == 0:
+            cb.add(sum_b, -math.inf, c_rem)
+            cb.add([(idx.init_chunk_just_done(r, 0), 1.0), (idx.init_chunk_done(r, 0), -1.0)], 0.0, 0.0)
+        else:
+            cb.add(sum_b + [(idx.init_chunk_done(r, t - 1), -req.kv_bytes)], -math.inf, c_rem)
+            cb.add([(idx.init_chunk_active(r, t), 1.0), (idx.init_chunk_done(r, t - 1), 1.0)], -math.inf, 1.0)
+            cb.add([(idx.init_chunk_active(r, t), 1.0), (idx.tx(r, t), -1.0)], -math.inf, 0.0)
+            unlock_cum = [(idx.unlock(r, j, tau), 1.0) for j in range(idx.J) for tau in range(1, t + 1)]
+            cb.add([(idx.init_chunk_active(r, t), 1.0), (idx.init_chunk_done(r, t - 1), 1.0)] + unlock_cum, 1.0, math.inf)
+            cb.add(
+                [(idx.init_chunk_just_done(r, t), 1.0), (idx.init_chunk_done(r, t), -1.0), (idx.init_chunk_done(r, t - 1), 1.0)],
+                0.0,
+                math.inf,
+            )
+            cb.add([(idx.init_chunk_just_done(r, t), 1.0), (idx.init_chunk_done(r, t), -1.0)], -math.inf, 0.0)
+            cb.add([(idx.init_chunk_just_done(r, t), 1.0), (idx.init_chunk_done(r, t - 1), 1.0)], -math.inf, 1.0)
+            # Continuation flow cannot start until initial chunk data AND its propagation complete
+            cb.add([(idx.tx(r, t), 1.0), (idx.init_chunk_active(r, t), -1.0), (idx.init_chunk_done(r, t - 1), -1.0)], -math.inf, 0.0)
+            if l_prop > 0.0:
+                cb.add(
+                    [(idx.init_prop_rem(r, t - 1), 1.0), (idx.tx(r, t), m_prop), (idx.init_chunk_active(r, t), -m_prop)],
+                    -math.inf,
+                    m_prop,
+                )
+        if l_prop > 0.0:
+            cb.add(
+                [(idx.init_prop_rem(r, t), 1.0), (idx.tx_frac(r, t), -problem.dt_s), (idx.init_chunk_just_done(r, t), -m_prop)],
+                l_prop - problem.dt_s - m_prop,
+                math.inf,
+            )
+            if t >= 1:
+                cb.add(
+                    [
+                        (idx.init_prop_rem(r, t), 1.0),
+                        (idx.init_prop_rem(r, t - 1), -1.0),
+                        (idx.init_chunk_done(r, t), -m_prop),
+                        (idx.init_chunk_just_done(r, t), m_prop),
+                    ],
+                    -problem.dt_s - m_prop,
+                    math.inf,
                 )
 
     def _add_edge_fair_constraints(  # noqa: PLR0913
@@ -1079,16 +1146,8 @@ class R3Solver:
             if x_sol[idx.tx(r, 0)] > 0.5 and not in_flight_0:
                 dst_j = max(range(idx.J), key=lambda j: float(x_sol[idx.m(r, j, 0)]))
                 if x_sol[idx.m(r, dst_j, 0)] > 0.5 and dst_j != j0:
-                    init_recv = (
-                        snap.received_bytes
-                        if (snap is not None and problem.nodes[dst_j].node_id == snap.dst)
-                        else 0.0
-                    )
-                    rem_bytes = max(0.0, req.kv_bytes - init_recv)
-                    sent_0 = float(x_sol[idx.b(r, 0)])
-                    nbytes = None if sent_0 >= rem_bytes - 1e-6 else sent_0
                     migrations.append(
-                        MigrationOrder(req_id=req.req_id, dst=problem.nodes[dst_j].node_id, nbytes=nbytes)
+                        MigrationOrder(req_id=req.req_id, dst=problem.nodes[dst_j].node_id, nbytes=None)
                     )
 
         mig_bytes = sum(

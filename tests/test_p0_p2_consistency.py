@@ -837,3 +837,66 @@ def test_r2c_sending_on_frozen_path_cannot_reroute_to_shortcut() -> None:
     assert res_ok.goodput_req_ids == (0,)
     _exec_returned_schedule(world, env, res_ok, 7.0, slots=6)
     assert req.node == 2 and req.t_delivered is not None and req.t_delivered <= 35.0
+
+
+@pytest.mark.parametrize(
+    ("hop_lat_s", "pout", "pin", "chunk1_bytes", "wide_deadline"),
+    [
+        (4.0, 50, 150_000, 500_000_000.0, 30.0),       # 614.4 MB total, 500 MB chunk1 -> 9s data, 13s prop end
+        (0.005, 50, 335_449, 750_000_000.0, 30.0),     # 1,373,999,104 B total, 750 MB chunk1 -> 11s data, 11.005s prop end
+    ],
+)
+def test_r2d_sending_partial_chunk_then_propagating(
+    hop_lat_s: float, pout: int, pin: int, chunk1_bytes: float, wide_deadline: float
+) -> None:
+    """R2d counterexample: sending partial chunk must pay its own propagation wait before continuation."""
+    cfg = _base_cfg(hop_latency_s=hop_lat_s, kv_gib=2.0)
+    cfg["control_period_s"] = 100.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+    env = simpy.Environment()
+    world = CoWorld(
+        env,
+        _two_cs_trace(c1_dark=[[0.0, 60.0]]),
+        cfg,
+        placer=lambda view, req: 1,
+        planner=get_planner("none"),
+        seed=1,
+    )
+    req = Request(0, 0, 0.0, False, pin, pout, 1.0, 21.0)
+    world.submit(req)
+    env.run(until=5.0)
+    world.apply_plan(PlanAction(migrations=(MigrationOrder(req_id=0, dst=2, nbytes=chunk1_bytes),)))
+    # At t=6.0s: 125 MB sent, chunk1 still sending
+    env.run(until=6.0)
+    snap = world.local_view.migration_snapshot(0)
+    assert snap is not None and snap.phase == "sending"
+    assert snap.chunk_sent_bytes == pytest.approx(125_000_000.0, rel=1e-4)
+
+    problem = ProblemBuilder(horizon_slots=4, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    result = R3Solver().solve(problem)
+    assert result.action.migrations == ()
+    # Earliest physical finish is > 21.0s (22.9152s for 4s prop; 21.00199s for 5ms prop)
+    assert result.goodput_req_ids == ()
+
+    # Wide deadline positive case under periodic R3RuntimePlanner control
+    cfg_ok = _base_cfg(hop_latency_s=hop_lat_s, kv_gib=2.0)
+    cfg_ok["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg_ok["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+    env_ok = simpy.Environment()
+    w_ok = CoWorld(
+        env_ok,
+        _two_cs_trace(c1_dark=[[0.0, 60.0]]),
+        cfg_ok,
+        placer=get_placer("nearest"),
+        planner=get_planner("r3_milp"),
+        seed=1,
+    )
+    r_ok = Request(0, 0, 0.0, False, pin, pout, 1.0, wide_deadline)
+    w_ok.submit(r_ok)
+    env_ok.run(until=4.5)
+    w_ok.apply_plan(PlanAction(migrations=(MigrationOrder(req_id=0, dst=2, nbytes=chunk1_bytes),)))
+    env_ok.run(until=wide_deadline)
+    assert r_ok.node == 2 and r_ok.t_delivered is not None and r_ok.t_delivered <= wide_deadline
