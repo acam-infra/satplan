@@ -87,6 +87,9 @@ def summarize(w: CoWorld) -> dict[str, Any]:
         "e2e_p95_all_s": _pct(lat_all, 95),
         "long_p95_all_s": _pct(lat_long_all, 95),
         "peak_temp_C": w.peak_temp_C,
+        "energy_kj": w.pt.energy_j / 1000.0,
+        "zero_power_s": w.pt.zero_power_s,
+        "dod_exhausted_s": w.pt.dod_exhausted_s,
         "upload_fail": w.upload_fail_count,
         "link_GB_hops": w.link_bytes_hops / 1e9,
     }

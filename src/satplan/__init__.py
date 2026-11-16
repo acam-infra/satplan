@@ -6,9 +6,10 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from satplan.metrics import RunResult
     from satplan.runner import load_config, run_simulation
+    from satplan.suite import SuiteResult, run_suite
     from satplan.trace import Trace
 
-__all__ = ["RunResult", "Trace", "load_config", "run_simulation"]
+__all__ = ["RunResult", "SuiteResult", "Trace", "load_config", "run_simulation", "run_suite"]
 
 
 def __getattr__(name: str) -> Any:
@@ -20,6 +21,10 @@ def __getattr__(name: str) -> Any:
         from satplan.trace import Trace
 
         return Trace
+    if name in ("SuiteResult", "run_suite"):
+        from satplan import suite
+
+        return getattr(suite, name)
     if name in ("load_config", "run_simulation"):
         from satplan import runner
 
