@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import simpy
 
-from satplan.actions import MigrationOrder, MigrationSessionSnapshot, PlanAction
+from satplan.actions import BackgroundFlowSnapshot, MigrationOrder, MigrationSessionSnapshot, PlanAction
 from satplan.net import FluidNet
 from satplan.power_thermal import PowerThermalModel
 from satplan.timing import iter_time, kv_bytes_per_tok
@@ -150,6 +150,25 @@ class CoWorld:
             for _, _, e in f.hops:
                 out[e] = out.get(e, 0.0) + f.rate
         return out
+
+    def background_flow_snapshots(self) -> tuple[BackgroundFlowSnapshot, ...]:
+        self.net.advance(self.env.now)
+        snaps: list[BackgroundFlowSnapshot] = []
+        for f in self.net.flows:
+            if f.tag == "mig":
+                continue
+            req_id = f.meta.get("req")
+            req = self._req_by_id.get(req_id) if req_id is not None else None
+            total = float(req.upload_bytes) if req is not None else float(f.sent + f.remaining)
+            snaps.append(
+                BackgroundFlowSnapshot(
+                    req_id=req_id,
+                    hops=tuple((int(a), int(b), int(e)) for a, b, e in f.hops),
+                    remaining_bytes=max(0.0, float(f.remaining)),
+                    total_bytes=max(0.0, total),
+                )
+            )
+        return tuple(snaps)
 
     def migration_snapshot(self, req_id: int) -> MigrationSessionSnapshot | None:
         r = self._req_by_id.get(req_id)

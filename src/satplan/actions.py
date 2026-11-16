@@ -25,6 +25,14 @@ class MigrationSessionSnapshot:
 
 
 @dataclass(frozen=True)
+class BackgroundFlowSnapshot:
+    req_id: int | None
+    hops: tuple[tuple[int, int, int], ...]  # (from_node, to_node, edge_idx)
+    remaining_bytes: float
+    total_bytes: float
+
+
+@dataclass(frozen=True)
 class PlanAction:
     tier_decisions: dict[int, int | None] = field(default_factory=dict)
     pause_ids: tuple[int, ...] = ()

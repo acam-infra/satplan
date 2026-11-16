@@ -80,6 +80,100 @@ def _validate_planning_dt(dt_s: float, control_period_s: float, interval_s: floa
     return None
 
 
+def _allocate_bg_rates(
+    active: list[int],
+    flows: tuple[Any, ...],
+    view: ForecastView,
+) -> dict[int, float]:
+    rates = {i: 0.0 for i in active}
+    rem: dict[tuple[int, int], float] = {}
+    for i in active:
+        for a, b, e in flows[i].hops:
+            rem[(a, b)] = view.edge_cap_Bps(e)
+    live = list(active)
+    while live:
+        users: dict[tuple[int, int], int] = {}
+        for i in live:
+            for a, b, _ in flows[i].hops:
+                users[(a, b)] = users.get((a, b), 0) + 1
+        share = min(rem[k] / c for k, c in users.items())
+        for i in live:
+            rates[i] += share
+            for a, b, _ in flows[i].hops:
+                rem[(a, b)] -= share
+        full = {k for k, v in rem.items() if v <= 1e-6 * max(1.0, share)}
+        live = [i for i in live if not any((a, b) in full for a, b, _ in flows[i].hops)]
+    return rates
+
+
+def _refresh_bg_flow_states(
+    flows: tuple[Any, ...],
+    done: list[bool],
+    failed: list[bool],
+    rem: list[float],
+    view: ForecastView,
+    tau: float,
+    slot_end: float,
+) -> tuple[list[int], float]:
+    active: list[int] = []
+    next_topo = slot_end
+    for i, f in enumerate(flows):
+        if done[i]:
+            continue
+        all_up = all(view.edge_up_at(e, tau) for _, _, e in f.hops)
+        if not all_up:
+            if not failed[i]:
+                failed[i] = True
+                rem[i] = float(f.total_bytes)
+        elif failed[i]:
+            failed[i] = False
+        if not failed[i]:
+            active.append(i)
+        for _, _, e in f.hops:
+            nxt = view.edge_up_until(e, tau) if view.edge_up_at(e, tau) else view.next_edge_up(e, tau)
+            if nxt < next_topo:
+                next_topo = nxt
+    return active, next_topo
+
+
+def _predict_bg_dir_bps(
+    view: ForecastView,
+    horizon_slots: int,
+    dt_s: float,
+) -> dict[tuple[int, int, int], float]:
+    flows = view.background_flow_snapshots()
+    if not flows:
+        return {}
+    rem = [float(f.remaining_bytes) for f in flows]
+    done = [r <= 1.0 for r in rem]
+    failed = [False] * len(flows)
+    bytes_dir: dict[tuple[int, int, int], float] = {}
+
+    for t in range(horizon_slots):
+        tau = view.now + t * dt_s
+        slot_end = view.now + (t + 1) * dt_s
+        while tau < slot_end - 1e-12:
+            active, next_topo = _refresh_bg_flow_states(flows, done, failed, rem, view, tau, slot_end)
+            if not active:
+                tau = max(tau + 1e-12, next_topo)
+                continue
+            rates = _allocate_bg_rates(active, flows, view)
+            next_fin = min((tau + rem[i] / rates[i] for i in active if rates[i] > 1e-9), default=slot_end)
+            tau_next = max(tau + 1e-12, min(slot_end, next_topo, next_fin))
+            span = tau_next - tau
+            for i in active:
+                step = min(rem[i], rates[i] * span)
+                rem[i] -= step
+                if rem[i] <= 1.0:
+                    rem[i] = 0.0
+                    done[i] = True
+                for a, b, _ in flows[i].hops:
+                    bytes_dir[(a, b, t)] = bytes_dir.get((a, b, t), 0.0) + step
+            tau = tau_next
+
+    return {k: v * 8.0 / dt_s for k, v in bytes_dir.items()}
+
+
 class ProblemBuilder:
     """Maps a ForecastView snapshot and PhysicsParams into a pure-data R3Problem."""
 
@@ -293,7 +387,7 @@ class ProblemBuilder:
         view: ForecastView, horizon_slots: int, dt_s: float
     ) -> tuple[tuple[R3EdgeSpec, ...], dict[tuple[int, int, int], tuple[int, ...]], dict[tuple[int, int], int]]:
         compute_set = set(view.compute_nodes)
-        cur_rates = view.upload_edge_rates()
+        bg_dir_bps = _predict_bg_dir_bps(view, horizon_slots, dt_s)
         edges: list[R3EdgeSpec] = []
         dir_edge_idx: dict[tuple[int, int], int] = {}
         for e_idx, (u, v) in enumerate(view.edges):
@@ -309,12 +403,12 @@ class ProblemBuilder:
                 else 0.0
                 for t in range(horizon_slots)
             )
-            bg_0 = min(tot_bps[0], cur_rates.get(e_idx, 0.0) * 8.0)
-            bg_bps = (bg_0,) + (0.0,) * (horizon_slots - 1)
+            bg_uv = tuple(min(tot_bps[t], bg_dir_bps.get((u, v, t), 0.0)) for t in range(horizon_slots))
+            bg_vu = tuple(min(tot_bps[t], bg_dir_bps.get((v, u, t), 0.0)) for t in range(horizon_slots))
             dir_edge_idx[(u, v)] = len(edges)
-            edges.append(R3EdgeSpec(src=u, dst=v, tot_bps=tot_bps, bg_bps=bg_bps))
+            edges.append(R3EdgeSpec(src=u, dst=v, tot_bps=tot_bps, bg_bps=bg_uv))
             dir_edge_idx[(v, u)] = len(edges)
-            edges.append(R3EdgeSpec(src=v, dst=u, tot_bps=tot_bps, bg_bps=bg_bps))
+            edges.append(R3EdgeSpec(src=v, dst=u, tot_bps=tot_bps, bg_bps=bg_vu))
 
         routes: dict[tuple[int, int, int], tuple[int, ...]] = {}
         for t in range(horizon_slots):

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from satplan.trace import INF
 
 if TYPE_CHECKING:
-    from satplan.actions import MigrationSessionSnapshot
+    from satplan.actions import BackgroundFlowSnapshot, MigrationSessionSnapshot
     from satplan.power_thermal import PhysicsParams
     from satplan.world import CoWorld, Request
 
@@ -205,6 +205,12 @@ class ForecastView(LocalStateView):
 
     def edge_up_until(self, e: int, t: float) -> float:
         return self._w.trace.edge_up_until(e, t)
+
+    def next_edge_up(self, e: int, t: float) -> float:
+        return self._w.trace.next_edge_up(e, t)
+
+    def background_flow_snapshots(self) -> tuple[BackgroundFlowSnapshot, ...]:
+        return self._w.background_flow_snapshots()
 
     def path_at(self, s: int, d: int, t: float) -> tuple[list[int], list[int]] | None:
         return self._w.trace.path(s, d, t)

@@ -1830,3 +1830,209 @@ def test_r1g_b_rejected_dt_fallback_preserves_inflight_migration_and_paused_reco
     assert action.tier_decisions == {1: None, 2: None}
     assert action.resume_ids == (1,)
     assert len(action.migrations) == 1 and action.migrations[0].req_id == 0 and action.migrations[0].dst == 2
+
+
+@pytest.mark.parametrize(
+    ("upload_bytes", "expect_migrant_ontime"),
+    [
+        (100_000_000.0, False),  # R14 repro: 100MB upload occupies CS1->CS2 across slots 0..2
+        (1.0, True),             # 1B upload finishes before t=2s -> migrant delivers on time
+    ],
+)
+def test_r2g_known_upload_across_slots_negative_and_positive(
+    upload_bytes: float,
+    expect_migrant_ontime: bool,
+) -> None:
+    """R2g: known upload occupancy persists across forecast slots without false goodput."""
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "r2g-known-upload",
+        "horizon_s": 60.0,
+        "nodes": [{"id": 0, "role": "rs"}, {"id": 1, "role": "compute"}, {"id": 2, "role": "compute"}],
+        "edges": [
+            {"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 60.0]]},
+            {"u": 1, "v": 2, "kind": "inter", "up": [[0.0, 60.0]]},
+        ],
+        "dark": [[], [[0.0, 60.0]], []],
+    })
+    cfg = _base_cfg()
+    cfg["control_period_s"] = 2.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["thermal"]["T0_C"] = 35.0
+    cfg["net"]["link_gbps"].update(inter=0.04, rs=10.0)
+    cfg["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+    records: list[tuple[tuple[int, ...], dict[tuple[int, int], tuple[float, ...]]]] = []
+
+    class _RecPlanner:
+        requires_forecast = True
+
+        def __init__(self) -> None:
+            self.inner = R3RuntimePlanner(builder=ProblemBuilder(horizon_slots=4, time_limit_s=5.0))
+
+        def plan(self, view, invariants):
+            action = self.inner.plan(view, invariants)
+            res = self.inner.last_result
+            assert res is not None
+            prob = self.inner.builder.build(view, invariants)
+            bg_map = {(e.src, e.dst): e.bg_bps for e in prob.edges if e.bg_bps is not None}
+            records.append((res.goodput_req_ids, bg_map))
+            return action
+
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, placer=lambda v, r: 2 if r.i == 0 else 1, planner=_RecPlanner(), seed=1)
+    world.submit(Request(0, 0, 0.0, False, 1, 1, upload_bytes, 50.0))
+    migrant = Request(1, 0, 0.0, False, 5000, 50, 1.0, 20.0)
+    world.submit(migrant)
+    env.run(until=40.0)
+    actual_ontime = {r.i for r in world.reqs if r.t_delivered is not None and r.t_delivered <= r.deadline}
+    assert records
+    first_pred, first_bg = records[0]
+    assert set(first_pred).issubset(actual_ontime)
+    if expect_migrant_ontime:
+        assert first_bg[(1, 2)] == pytest.approx((0.0, 0.0, 0.0, 0.0), abs=1e-3)
+        assert 1 in actual_ontime
+        assert 1 in first_pred
+    else:
+        assert first_bg[(1, 2)] == pytest.approx((40e6, 40e6, 40e6, 0.0), rel=1e-5)
+        assert first_bg[(2, 1)] == pytest.approx((0.0, 0.0, 0.0, 0.0), abs=1e-3)
+        assert 1 not in first_pred
+
+
+def test_r2g_shared_bottleneck_speedup_and_completion_release() -> None:
+    """R2g: when a competing upload finishes mid-slot, surviving upload speeds up then releases."""
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "r2g-shared-speedup",
+        "horizon_s": 60.0,
+        "nodes": [
+            {"id": 0, "role": "rs"},
+            {"id": 1, "role": "compute"},
+            {"id": 2, "role": "compute"},
+            {"id": 3, "role": "compute"},
+        ],
+        "edges": [
+            {"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 60.0]]},
+            {"u": 1, "v": 2, "kind": "inter", "up": [[0.0, 60.0]]},
+            {"u": 1, "v": 3, "kind": "inter", "up": [[0.0, 60.0]]},
+        ],
+        "dark": [[], [[0.0, 60.0]], [], []],
+    })
+    cfg = _base_cfg()
+    cfg["control_period_s"] = 2.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["thermal"]["T0_C"] = 35.0
+    cfg["net"]["link_gbps"].update(rs=0.08, inter=0.08)  # 10 MB/s on both RS and inter
+    cfg["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+    env = simpy.Environment()
+    world = CoWorld(
+        env,
+        tr,
+        cfg,
+        placer=lambda v, r: {0: 2, 1: 3, 2: 1}[r.i],
+        planner=get_planner("r3_milp"),
+        seed=1,
+    )
+    # Req 0 (45MB -> CS2) & Req 1 (15MB -> CS3) share 0->1 (5 MB/s each for 3s -> Req 1 ends at t=3s;
+    # Req 0 speeds up to 10 MB/s at t=3s and finishes remaining 30MB at t=6s, releasing CS1->CS2 for slot 1).
+    world.submit(Request(0, 0, 0.0, False, 1, 1, 45_000_000.0, 50.0))
+    world.submit(Request(1, 0, 0.0, False, 1, 1, 15_000_000.0, 50.0))
+    migrant = Request(2, 0, 0.0, False, 5000, 50, 1.0, 20.0)
+    world.submit(migrant)
+    env.run(until=2.0)
+    prob = ProblemBuilder(horizon_slots=4, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    bg_12 = next(e.bg_bps for e in prob.edges if e.src == 1 and e.dst == 2)
+    assert bg_12 is not None
+    # At t=2s: rem(0)=35MB, rem(1)=5MB. Slot 0 [2,8): 5MB*1s + 10MB*3s = 35MB -> 46.67 Mbps (>40Mbps initial!),
+    # then slot 1+ released (0.0 Mbps).
+    assert bg_12[0] == pytest.approx(35_000_000.0 * 8.0 / 6.0, rel=1e-4)
+    assert bg_12[1] == pytest.approx(0.0, abs=1e-3)
+    env.run(until=25.0)
+    assert migrant.node == 2 and migrant.t_delivered is not None and migrant.t_delivered <= 20.0
+
+
+def test_r2g_link_break_and_recovery_reserves_retry_slot() -> None:
+    """R2g: link break aborts upload and recovery re-reserves retry occupancy in later slot."""
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "r2g-link-break-retry",
+        "horizon_s": 60.0,
+        "nodes": [{"id": 0, "role": "rs"}, {"id": 1, "role": "compute"}, {"id": 2, "role": "compute"}],
+        "edges": [
+            {"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 5.0], [14.0, 60.0]]},
+            {"u": 1, "v": 2, "kind": "inter", "up": [[0.0, 60.0]]},
+        ],
+        "dark": [[], [[0.0, 60.0]], []],
+    })
+    cfg = _base_cfg()
+    cfg["control_period_s"] = 2.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["net"]["link_gbps"].update(rs=10.0, inter=0.04)  # 5 MB/s
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, placer=lambda v, r: 2, planner=get_planner("none"), seed=1)
+    world.submit(Request(0, 0, 0.0, False, 1, 1, 60_000_000.0, 50.0))
+    env.run(until=2.0)
+    prob = ProblemBuilder(horizon_slots=4, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    bg_12 = next(e.bg_bps for e in prob.edges if e.src == 1 and e.dst == 2)
+    assert bg_12 is not None
+    # Slot 0 [2,8): active [2,5) -> 20 Mbps; Slot 1 [8,14): RS down -> 0; Slot 2 [14,20): retried 60MB -> 40 Mbps.
+    assert bg_12[0] == pytest.approx(20e6, rel=1e-4)
+    assert bg_12[1] == pytest.approx(0.0, abs=1e-3)
+    assert bg_12[2] == pytest.approx(40e6, rel=1e-4)
+
+
+def test_r2g_disjoint_path_migration_positive() -> None:
+    """R2g positive: long upload on CS1->CS2 does not block migration on disjoint CS3->CS4."""
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "r2g-disjoint-path",
+        "horizon_s": 60.0,
+        "nodes": [
+            {"id": 0, "role": "rs"},
+            {"id": 1, "role": "compute"},
+            {"id": 2, "role": "compute"},
+            {"id": 3, "role": "compute"},
+            {"id": 4, "role": "compute"},
+        ],
+        "edges": [
+            {"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 60.0]]},
+            {"u": 0, "v": 3, "kind": "rs", "up": [[0.0, 60.0]]},
+            {"u": 1, "v": 2, "kind": "inter", "up": [[0.0, 60.0]]},
+            {"u": 3, "v": 4, "kind": "inter", "up": [[0.0, 60.0]]},
+        ],
+        "dark": [[], [[0.0, 60.0]], [], [[0.0, 60.0]], []],
+    })
+    cfg = _base_cfg()
+    cfg["control_period_s"] = 2.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["thermal"]["T0_C"] = 35.0
+    cfg["net"]["link_gbps"].update(inter=0.04, rs=10.0)
+    cfg["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+    preds: list[tuple[int, ...]] = []
+
+    class _RecPlanner:
+        requires_forecast = True
+
+        def __init__(self) -> None:
+            self.inner = R3RuntimePlanner(builder=ProblemBuilder(horizon_slots=4, time_limit_s=5.0))
+
+        def plan(self, view, invariants):
+            action = self.inner.plan(view, invariants)
+            if self.inner.last_result is not None:
+                preds.append(self.inner.last_result.goodput_req_ids)
+            return action
+
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, placer=lambda v, r: 2 if r.i == 0 else 3, planner=_RecPlanner(), seed=1)
+    world.submit(Request(0, 0, 0.0, False, 1, 1, 100_000_000.0, 50.0))
+    migrant = Request(1, 0, 0.0, False, 5000, 50, 1.0, 20.0)
+    world.submit(migrant)
+    env.run(until=25.0)
+    actual_ontime = {r.i for r in world.reqs if r.t_delivered is not None and r.t_delivered <= r.deadline}
+    assert 1 in actual_ontime
+    assert migrant.node == 4
+    assert any(1 in p for p in preds)
+    assert all(set(p).issubset(actual_ontime) for p in preds)

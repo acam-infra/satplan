@@ -116,6 +116,12 @@ class Trace:
         end = self.up[e][k][1]
         return INF if end >= self.horizon else end
 
+    def next_edge_up(self, e: int, t: float) -> float:
+        if self.edge_up(e, t):
+            return t
+        k = bisect.bisect_right(self._up_starts[e], t)
+        return self.up[e][k][0] if k < len(self.up[e]) else INF
+
     def adjacency(self, t: float) -> list[list[tuple[int, int]]]:
         k = self.epoch_index(t)
         adj = self._adj_cache.get(k)
