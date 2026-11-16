@@ -142,7 +142,7 @@ class ProblemBuilder:
         node_id: int,
         horizon_slots: int,
         dt_s: float,
-    ) -> tuple[tuple[bool, ...], tuple[float, ...], tuple[R3EclipseWindowSpec, ...]]:
+    ) -> tuple[tuple[bool, ...], tuple[float, ...], tuple[R3EclipseWindowSpec, ...], tuple[float, ...]]:
         t0 = view.now
         t_end = t0 + horizon_slots * dt_s
         segs = view.power_segments(node_id, t0, t_end)
@@ -157,7 +157,10 @@ class ProblemBuilder:
 
         sunlit_list: list[float] = []
         ecl_bools: list[bool] = []
+        event_offsets: list[float] = []
         win_slots: list[list[tuple[int, float]]] = [[] for _ in merged_ecl]
+        ctrl_dt = view.control_period_s
+        ecl_active_after_entry = params.eclipse_dod_budget_j is None or params.eclipse_dod_budget_j > 1e-9
         for t in range(horizon_slots):
             sa = t0 + t * dt_s
             sb = sa + dt_s
@@ -172,6 +175,18 @@ class ProblemBuilder:
                 if ov > 1e-12:
                     win_slots[w_idx].append((t, ov))
                     ecl_t += ov
+            if ctrl_dt < dt_s - 1e-9:
+                event_offsets.append(dt_s)
+            else:
+                ev_off = max(
+                    (
+                        a - sa
+                        for a, _b, is_ecl in segs
+                        if sa + 1e-12 < a < sb - 1e-12 and (not is_ecl or ecl_active_after_entry)
+                    ),
+                    default=0.0,
+                )
+                event_offsets.append(ev_off)
             sunlit_list.append(sun_t)
             ecl_bools.append(ecl_t > 1e-9)
 
@@ -186,7 +201,7 @@ class ProblemBuilder:
             else:
                 budget = params.eclipse_dod_budget_j
             ecl_windows.append(R3EclipseWindowSpec(budget_j=budget, slot_durations_s=tuple(win_slots[w_idx])))
-        return tuple(ecl_bools), tuple(sunlit_list), tuple(ecl_windows)
+        return tuple(ecl_bools), tuple(sunlit_list), tuple(ecl_windows), tuple(event_offsets)
 
     @staticmethod
     def _build_nodes(  # noqa: PLR0913
@@ -208,7 +223,7 @@ class ProblemBuilder:
         for j in view.compute_nodes:
             res_decode_bytes = sum(r.reserved_tokens * view.bpt for r in decode_by_node[j])
             kv_cap_bytes = view.kv_headroom(j) + res_decode_bytes + incoming_mig_bytes[j]
-            is_eclipse, sunlit_s, ecl_windows = ProblemBuilder._build_node_power_windows(
+            is_eclipse, sunlit_s, ecl_windows, event_offsets = ProblemBuilder._build_node_power_windows(
                 view, params, j, horizon_slots, dt_s
             )
             dod_rem = None if params.eclipse_dod_budget_j is None else view.dod_remaining_j(j)
@@ -227,6 +242,7 @@ class ProblemBuilder:
                     tier_rates_tok_s=_node_tier_rates(params, nd_j, ctx_j),
                     sunlit_s=sunlit_s,
                     eclipse_windows=ecl_windows,
+                    max_event_offset_s=event_offsets,
                 )
             )
         return tuple(nodes)

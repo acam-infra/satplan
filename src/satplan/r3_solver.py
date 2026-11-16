@@ -36,6 +36,7 @@ class R3NodeSpec:
     tier_rates_tok_s: tuple[float, ...] | None = None
     sunlit_s: tuple[float, ...] | None = None
     eclipse_windows: tuple[R3EclipseWindowSpec, ...] | None = None
+    max_event_offset_s: tuple[float, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -605,6 +606,8 @@ class R3Solver:
             raise ValueError(f"node {n.node_id} is_eclipse length must match horizon_slots")
         if n.sunlit_s is not None and len(n.sunlit_s) != problem.horizon_slots:
             raise ValueError(f"node {n.node_id} sunlit_s length must match horizon_slots")
+        if n.max_event_offset_s is not None and len(n.max_event_offset_s) != problem.horizon_slots:
+            raise ValueError(f"node {n.node_id} max_event_offset_s length must match horizon_slots")
         if n.eclipse_windows is not None:
             for win in n.eclipse_windows:
                 for t, dur in win.slot_durations_s:
@@ -803,9 +806,13 @@ class R3Solver:
         tau = problem.r_th * problem.c_th
         alpha = math.exp(-problem.dt_s / tau) if tau > 0.0 else 0.0
         one_minus_alpha = 1.0 - alpha
+        ctrl_dt = problem.dt_s if problem.control_period_s is None else problem.control_period_s
+        alpha_ctrl = math.exp(-ctrl_dt / tau) if tau > 0.0 else 0.0
+        max_t_eq = max((problem.t_amb_C + problem.r_th * t.power_w for t in problem.tiers), default=problem.t_amb_C)
         zero_tiers = [l_i for l_i, t in enumerate(problem.tiers) if t.power_w <= 0.0 and t.rate_tok_s <= 0.0]
 
         for j, node in enumerate(problem.nodes):
+            m_th = max(0.0, max(node.init_temp_C, problem.t_max_C, max_t_eq) - problem.t_max_C) + 1.0
             for t in range(idx.H):
                 cb.add([(idx.z(j, l_i, t), 1.0) for l_i in range(idx.L)], 1.0, 1.0)
                 terms: list[tuple[int, float]] = [(idx.theta(j, t), 1.0)]
@@ -815,6 +822,25 @@ class R3Solver:
                     terms.append((idx.z(j, l_i, t), -one_minus_alpha * problem.r_th * tier.power_w))
                 rhs = one_minus_alpha * problem.t_amb_C + (alpha * node.init_temp_C if t == 0 else 0.0)
                 cb.add(terms, rhs, rhs)
+
+                # Enforce current_op full-control-period thermal admission at slot start and worst intra-slot event.
+                offset_s = (
+                    node.max_event_offset_s[t]
+                    if node.max_event_offset_s is not None
+                    else (problem.dt_s if ctrl_dt < problem.dt_s - 1e-9 else 0.0)
+                )
+                alpha_tot = math.exp(-(ctrl_dt + offset_s) / tau) if tau > 0.0 else 0.0
+                for l_i, tier in enumerate(problem.tiers):
+                    if tier.power_w <= 0.0:
+                        continue
+                    t_eq = problem.t_amb_C + problem.r_th * tier.power_w
+                    for a_eff in (alpha_ctrl, alpha_tot) if offset_s > 1e-12 or ctrl_dt > problem.dt_s + 1e-9 else ():
+                        rhs_adm = problem.t_max_C - (1.0 - a_eff) * t_eq + m_th
+                        if t == 0:
+                            if a_eff * node.init_temp_C + (1.0 - a_eff) * t_eq > problem.t_max_C + 1e-9:
+                                cb.add([(idx.z(j, l_i, t), 1.0)], 0.0, 0.0)
+                        else:
+                            cb.add([(idx.theta(j, t - 1), a_eff), (idx.z(j, l_i, t), m_th)], -math.inf, rhs_adm)
 
                 for z0 in zero_tiers:
                     for r in range(idx.R):
