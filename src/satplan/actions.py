@@ -17,9 +17,11 @@ class MigrationSessionSnapshot:
     dst: int
     target_bytes: float
     received_bytes: float
+    chunk_sent_bytes: float = 0.0
     chunk_rem_bytes: float = 0.0
     prop_rem_s: float = 0.0
     path_edges: tuple[int, ...] = ()
+    path_nodes: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)

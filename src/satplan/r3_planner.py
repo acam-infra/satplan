@@ -82,8 +82,8 @@ class ProblemBuilder:
         nd_rep, ctx_rep = self._rep_batch(view, decode_reqs)
         tiers = _tier_specs(params, nd_rep, ctx_rep)
         nodes = self._build_nodes(view, params, decode_reqs, decode_by_node, horizon_slots, dt_s, ctx_rep, kv_ubs)
-        edges, routes = self._build_edges_and_routes(view, horizon_slots, dt_s)
-        requests = self._build_requests(view, decode_reqs, tiers, horizon_slots, dt_s, kv_ubs)
+        edges, routes, dir_edge_idx = self._build_edges_and_routes(view, horizon_slots, dt_s)
+        requests = self._build_requests(view, decode_reqs, tiers, horizon_slots, dt_s, kv_ubs, dir_edge_idx)
         kv_sorted = sorted(kv_ubs.values(), reverse=True)
         batch_tier_rates = (
             tuple(_node_tier_rates(params, k, sum(kv_sorted[:k])) for k in range(1, len(decode_reqs) + 1))
@@ -177,7 +177,7 @@ class ProblemBuilder:
     @staticmethod
     def _build_edges_and_routes(
         view: ForecastView, horizon_slots: int, dt_s: float
-    ) -> tuple[tuple[R3EdgeSpec, ...], dict[tuple[int, int, int], tuple[int, ...]]]:
+    ) -> tuple[tuple[R3EdgeSpec, ...], dict[tuple[int, int, int], tuple[int, ...]], dict[tuple[int, int], int]]:
         compute_set = set(view.compute_nodes)
         cur_rates = view.upload_edge_rates()
         edges: list[R3EdgeSpec] = []
@@ -212,7 +212,7 @@ class ProblemBuilder:
                         routes[(s, d, t)] = tuple(
                             dir_edge_idx[(p_nodes[k], p_nodes[k + 1])] for k in range(len(p_nodes) - 1)
                         )
-        return tuple(edges), routes
+        return tuple(edges), routes, dir_edge_idx
 
     @staticmethod
     def _build_requests(  # noqa: PLR0913
@@ -222,6 +222,7 @@ class ProblemBuilder:
         horizon_slots: int,
         dt_s: float,
         kv_ubs: dict[int, float],
+        dir_edge_idx: dict[tuple[int, int], int],
     ) -> tuple[R3RequestSpec, ...]:
         max_rate = max((t.rate_tok_s for t in tiers), default=0.0)
         horizon_cap_tok = max(1.0, 0.8 * max_rate * horizon_slots * dt_s)
@@ -238,6 +239,13 @@ class ProblemBuilder:
                 eff_dl = raw_dl
             snap = view.migration_snapshot(r.i)
             kv_bytes = max(snap.target_bytes, 1.0) if snap is not None else max(kv_ubs[r.i] * view.bpt, 1.0)
+            solver_edges: tuple[int, ...] = ()
+            if snap is not None and len(snap.path_nodes) >= 2:
+                solver_edges = tuple(
+                    dir_edge_idx[(snap.path_nodes[k], snap.path_nodes[k + 1])]
+                    for k in range(len(snap.path_nodes) - 1)
+                    if (snap.path_nodes[k], snap.path_nodes[k + 1]) in dir_edge_idx
+                )
             req_specs.append(
                 R3RequestSpec(
                     req_id=r.i,
@@ -253,6 +261,7 @@ class ProblemBuilder:
                     init_mig_received_bytes=float(r.mig_received_bytes),
                     init_mig_in_flight=r.mig_in_flight,
                     init_mig=snap,
+                    init_mig_solver_edges=solver_edges,
                     n_mig=r.n_mig,
                 )
             )

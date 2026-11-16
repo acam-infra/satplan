@@ -53,6 +53,7 @@ class R3RequestSpec:
     init_mig_received_bytes: float = 0.0
     init_mig_in_flight: bool = False
     init_mig: MigrationSessionSnapshot | None = None
+    init_mig_solver_edges: tuple[int, ...] = ()
     n_mig: int = 0
 
 
@@ -129,6 +130,8 @@ class _VarLayout:
             ("off_m", self.R * self.J * self.H),
             ("off_tx", self.R * self.H),
             ("off_tx_complete", self.R * self.H),
+            ("off_init_chunk_done", self.R * self.H),
+            ("off_init_chunk_active", self.R * self.H),
             ("off_comp", self.R * self.H),
             ("off_y", self.R),
             ("off_w", self.E * self.H * self.K_max),
@@ -141,6 +144,7 @@ class _VarLayout:
             ("off_prop_rem", self.R * self.H),
             ("off_d", self.R * self.J * self.H),
             ("off_arc", self.R * self.J * self.J * self.H),
+            ("off_arc_frozen", self.R * self.H),
             ("off_b_edge", self.R * self.E * self.H),
             ("off_eta", 1),
             ("off_xi", self.R),
@@ -200,6 +204,12 @@ class _VarLayout:
     def tx_complete(self, r: int, t: int) -> int:
         return self.off_tx_complete + r * self.H + t
 
+    def init_chunk_done(self, r: int, t: int) -> int:
+        return self.off_init_chunk_done + r * self.H + t
+
+    def init_chunk_active(self, r: int, t: int) -> int:
+        return self.off_init_chunk_active + r * self.H + t
+
     def tx_just_done(self, r: int, t: int) -> int:
         return self.off_tx_just_done + r * self.H + t
 
@@ -233,6 +243,9 @@ class _VarLayout:
 
     def arc(self, r: int, s: int, d: int, t: int) -> int:
         return self.off_arc + (((r * self.J + s) * self.J + d) * self.H) + t
+
+    def arc_frozen(self, r: int, t: int) -> int:
+        return self.off_arc_frozen + r * self.H + t
 
     def b_edge(self, r: int, e: int, t: int) -> int:
         return self.off_b_edge + (r * self.E + e) * self.H + t
@@ -573,10 +586,15 @@ class R3Solver:
                 lb[col_m] = 1.0 if j == d0 else 0.0
                 ub[col_m] = 1.0 if j == d0 else 0.0
             self._apply_init_mig_phase_bounds(problem, idx, lb, ub, r, req, snap)
-        elif problem.max_mig_per_req is not None and req.n_mig >= problem.max_mig_per_req:
-            for j in range(idx.J):
-                for t in range(idx.H):
-                    ub[idx.m(r, j, t)] = 0.0
+        else:
+            for t in range(idx.H):
+                ub[idx.init_chunk_done(r, t)] = 0.0
+                ub[idx.init_chunk_active(r, t)] = 0.0
+                ub[idx.arc_frozen(r, t)] = 0.0
+            if problem.max_mig_per_req is not None and req.n_mig >= problem.max_mig_per_req:
+                for j in range(idx.J):
+                    for t in range(idx.H):
+                        ub[idx.m(r, j, t)] = 0.0
         for t in range(idx.H):
             for s_j in range(idx.J):
                 for d_j in range(idx.J):
@@ -595,8 +613,15 @@ class R3Solver:
     ) -> None:
         if snap.phase == "sending":
             lb[idx.tx(r, 0)] = 1.0
+            lb[idx.init_chunk_active(r, 0)] = 1.0
+            ub[idx.init_chunk_active(r, 0)] = 1.0
             ub[idx.b(r, 0)] = min(req.kv_bytes, max(0.0, snap.chunk_rem_bytes))
-        elif snap.phase == "propagating_chunk":
+            return
+        for t in range(idx.H):
+            ub[idx.init_chunk_done(r, t)] = 0.0
+            ub[idx.init_chunk_active(r, t)] = 0.0
+            ub[idx.arc_frozen(r, t)] = 0.0
+        if snap.phase == "propagating_chunk":
             block_slots = max(1, math.ceil(snap.prop_rem_s / problem.dt_s - 1e-9))
             for t in range(min(idx.H, block_slots)):
                 ub[idx.tx(r, t)] = 0.0
@@ -786,6 +811,16 @@ class R3Solver:
             for (s_j, d_j, t_r), eids in routes.items():
                 if t_r == t:
                     prop_terms.append((idx.arc(r, s_j, d_j, t), -problem.hop_latency_s * len(eids)))
+            if snap is not None and snap.phase == "sending":
+                frozen_e = req.init_mig_solver_edges or routes.get(
+                    (
+                        problem.nodes.index(next(n for n in problem.nodes if n.node_id == req.init_node)),
+                        problem.nodes.index(next(n for n in problem.nodes if n.node_id == snap.dst)),
+                        0,
+                    ),
+                    (),
+                )
+                prop_terms.append((idx.arc_frozen(r, t), -problem.hop_latency_s * len(frozen_e)))
             cb.add(prop_terms, -problem.dt_s - m_prop, math.inf)
             if t >= 1:
                 cb.add(
@@ -814,7 +849,11 @@ class R3Solver:
                 cb.add([(idx.unlock(r, j, t), 1.0), (idx.u(r, j, t), -1.0), (idx.u(r, j, t - 1), 1.0)], 0.0, math.inf)
                 cb.add([(idx.unlock(r, j, t), 1.0), (idx.u(r, j, t), -1.0)], -math.inf, 0.0)
                 cb.add([(idx.unlock(r, j, t), 1.0), (idx.u(r, j, t - 1), 1.0)], -math.inf, 1.0)
-            init_recv = req.init_mig_received_bytes if j == init_mig_j else 0.0
+            init_recv = (
+                (snap.received_bytes + snap.chunk_sent_bytes)
+                if (snap is not None and j == init_mig_j)
+                else (req.init_mig_received_bytes if j == init_mig_j else 0.0)
+            )
             byte_terms = [(idx.tx_complete(r, t), req.kv_bytes), (idx.m(r, j, t), req.kv_bytes)]
             byte_terms.extend((idx.unlock(r, j, tau), req.kv_bytes) for tau in range(1, t + 1))
             byte_terms.extend((idx.d(r, j, tau), -1.0) for tau in range(t + 1))
@@ -832,12 +871,24 @@ class R3Solver:
             for e_i in eids:
                 edge_routes_by_t[t][e_i].append((s_j, d_j))
 
+        frozen_by_req: list[tuple[int, ...]] = []
         for r, req in enumerate(problem.requests):
-            self._add_request_net_constraints(idx, cb, r, req)
+            snap = _effective_init_mig(req)
+            if snap is not None and snap.phase == "sending":
+                j0 = problem.nodes.index(next(n for n in problem.nodes if n.node_id == req.init_node))
+                d0 = problem.nodes.index(next(n for n in problem.nodes if n.node_id == snap.dst))
+                frozen_by_req.append(req.init_mig_solver_edges or routes.get((j0, d0, 0), ()))
+            else:
+                frozen_by_req.append(())
+            self._add_request_net_constraints(idx, cb, r, req, snap)
         for e_i, edge in enumerate(problem.edges):
-            self._add_edge_fair_constraints(problem, idx, edge_routes_by_t, cb, e_i, edge)
+            self._add_edge_fair_constraints(problem, idx, edge_routes_by_t, frozen_by_req, cb, e_i, edge)
 
-    def _add_request_net_constraints(self, idx: _VarLayout, cb: _ConstraintBuilder, r: int, req: R3RequestSpec) -> None:
+    def _add_request_net_constraints(
+        self, idx: _VarLayout, cb: _ConstraintBuilder, r: int, req: R3RequestSpec, snap: MigrationSessionSnapshot | None
+    ) -> None:
+        is_sending = snap is not None and snap.phase == "sending"
+        c_rem = max(0.0, snap.chunk_rem_bytes) if is_sending else 0.0
         for t in range(idx.H):
             cb.add([(idx.tx(r, t), 1.0)] + [(idx.m(r, j, t), -1.0) for j in range(idx.J)], -math.inf, 0.0)
             cb.add([(idx.b(r, t), 1.0), (idx.tx(r, t), -req.kv_bytes)], -math.inf, 0.0)
@@ -845,8 +896,20 @@ class R3Solver:
             for j in range(idx.J):
                 cb.add([(idx.d(r, j, t), 1.0), (idx.m(r, j, t), -req.kv_bytes)], -math.inf, 0.0)
 
+            cb.add([(idx.arc_frozen(r, t), 1.0), (idx.init_chunk_active(r, t), -1.0)], 0.0, 0.0)
             arc_all = [(idx.arc(r, s, d, t), 1.0) for s in range(idx.J) for d in range(idx.J) if s != d]
-            cb.add(arc_all + [(idx.tx(r, t), -1.0)], 0.0, 0.0)
+            cb.add(arc_all + [(idx.arc_frozen(r, t), 1.0), (idx.tx(r, t), -1.0)], 0.0, 0.0)
+            if is_sending:
+                sum_b = [(idx.b(r, tau), 1.0) for tau in range(t + 1)]
+                cb.add(sum_b + [(idx.init_chunk_done(r, t), -c_rem)], 0.0, math.inf)
+                if t == 0:
+                    cb.add(sum_b, -math.inf, c_rem)
+                else:
+                    cb.add(sum_b + [(idx.init_chunk_done(r, t - 1), -req.kv_bytes)], -math.inf, c_rem)
+                    cb.add([(idx.init_chunk_active(r, t), 1.0), (idx.init_chunk_done(r, t - 1), 1.0)], -math.inf, 1.0)
+                    cb.add([(idx.init_chunk_active(r, t), 1.0), (idx.tx(r, t), -1.0)], -math.inf, 0.0)
+                    unlock_cum = [(idx.unlock(r, j, tau), 1.0) for j in range(idx.J) for tau in range(1, t + 1)]
+                    cb.add([(idx.init_chunk_active(r, t), 1.0), (idx.init_chunk_done(r, t - 1), 1.0)] + unlock_cum, 1.0, math.inf)
             for s in range(idx.J):
                 cb.add(
                     [(idx.arc(r, s, d, t), 1.0) for d in range(idx.J) if d != s] + [(idx.u(r, s, t), -1.0)],
@@ -865,6 +928,7 @@ class R3Solver:
         problem: R3Problem,
         idx: _VarLayout,
         edge_routes_by_t: list[list[list[tuple[int, int]]]],
+        frozen_by_req: list[tuple[int, ...]],
         cb: _ConstraintBuilder,
         e_i: int,
         edge: R3EdgeSpec,
@@ -875,16 +939,21 @@ class R3Solver:
             cb.add([(idx.b_edge(r, e_i, t), 1.0) for r in range(idx.R)], -math.inf, cap_bytes)
 
             pairs = edge_routes_by_t[t][e_i]
+            frozen_reqs = [r for r in range(idx.R) if e_i in frozen_by_req[r]]
             if idx.K_max >= 2:
                 cb.add([(idx.w(e_i, t, k), 1.0) for k in range(1, idx.K_max + 1)], -math.inf, 1.0)
                 count_terms = [(idx.w(e_i, t, k), float(k)) for k in range(1, idx.K_max + 1)]
                 for r in range(idx.R):
                     for s_j, d_j in pairs:
                         count_terms.append((idx.arc(r, s_j, d_j, t), -1.0))
+                for r in frozen_reqs:
+                    count_terms.append((idx.arc_frozen(r, t), -1.0))
                 cb.add(count_terms, 0.0, 0.0)
 
             for r, req in enumerate(problem.requests):
                 use_terms = [(idx.arc(r, s_j, d_j, t), 1.0) for s_j, d_j in pairs]
+                if e_i in frozen_by_req[r]:
+                    use_terms.append((idx.arc_frozen(r, t), 1.0))
                 cb.add([(idx.b_edge(r, e_i, t), 1.0)] + [(c, -req.kv_bytes) for c, _ in use_terms], -math.inf, 0.0)
                 cb.add(
                     [(idx.b_edge(r, e_i, t), 1.0), (idx.b(r, t), -1.0)] + [(c, -req.kv_bytes) for c, _ in use_terms],
@@ -896,7 +965,7 @@ class R3Solver:
                     fair_terms.extend((idx.w(e_i, t, k), -(cap_bytes / k)) for k in range(1, idx.K_max + 1))
                     fair_terms.extend((c, req.kv_bytes) for c, _ in use_terms)
                     cb.add(fair_terms, -math.inf, req.kv_bytes)
-                if cap_bytes > 0.0 and pairs:
+                if cap_bytes > 0.0 and use_terms:
                     self._add_tx_frac_bound(idx, cb, e_i, t, r, cap_bytes, use_terms)
 
     @staticmethod

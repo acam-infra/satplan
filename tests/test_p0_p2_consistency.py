@@ -779,3 +779,61 @@ def test_r2b_snapshots_sending_and_propagating_unlock_across_ticks() -> None:
     assert res_prop.action.migrations == ()
     assert res_prop.goodput_req_ids == (0,)  # Unlocks by t=16s, decodes 5s -> finishes 21s <= 25s
     assert res_prop.node_tiers[2][0] == 0  # Cannot decode in slot 0 [11, 16] while propagating
+
+
+def test_r2c_sending_on_frozen_path_cannot_reroute_to_shortcut() -> None:
+    """R2c counterexample: in-flight sending flow on 1->3->2 (5 MB/s) cannot jump to new 1->2 (125 MB/s) shortcut."""
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "review-frozen-path",
+        "horizon_s": 60.0,
+        "nodes": [
+            {"id": 0, "role": "rs"},
+            {"id": 1, "role": "compute"},
+            {"id": 2, "role": "compute"},
+            {"id": 3, "role": "compute"},
+        ],
+        "edges": [
+            {"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 60.0]]},
+            {"u": 1, "v": 3, "kind": "intra", "up": [[0.0, 60.0]]},  # 5 MB/s
+            {"u": 3, "v": 2, "kind": "intra", "up": [[0.0, 60.0]]},  # 5 MB/s
+            {"u": 1, "v": 2, "kind": "inter", "up": [[6.0, 60.0]]},  # 125 MB/s shortcut appears at t=6s
+        ],
+        "dark": [[], [[0.0, 60.0]], [], [[0.0, 60.0]]],
+    })
+    cfg = _base_cfg(hop_latency_s=0.0)
+    cfg["control_period_s"] = 100.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["net"]["link_gbps"] = {"intra": 0.04, "inter": 1.0, "rs": 10.0}  # intra=5 MB/s, inter=125 MB/s
+    cfg["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, placer=lambda view, req: 1, planner=get_planner("none"), seed=1)
+    req = Request(0, 0, 0.0, False, 25000, 50, 1.0, 22.0)
+    world.submit(req)
+    env.run(until=5.0)
+    world.apply_plan(PlanAction(migrations=(MigrationOrder(req_id=0, dst=2, nbytes=None),)))
+    # At t=7.0s: 10 MB sent on 1->3->2 (edges (1, 2)), 92.4 MB remaining; 1->2 shortcut is up since t=6s
+    env.run(until=7.0)
+    snap = world.local_view.migration_snapshot(0)
+    assert snap is not None and snap.phase == "sending"
+    assert snap.path_edges == (1, 2)
+    assert snap.chunk_rem_bytes == pytest.approx(92_400_000.0, rel=1e-4)
+
+    problem = ProblemBuilder(horizon_slots=5, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    result = R3Solver().solve(problem)
+    assert result.action.migrations == ()
+    # Physical lower bound on 1->3->2 is 5 + 102.4/5 + 5 = 30.48s > 22.0s
+    assert result.goodput_req_ids == ()
+
+    # Positive case with wide deadline (35.0s): old path completes and delivers on time
+    req.deadline = 35.0
+    prob_ok = ProblemBuilder(horizon_slots=6, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    res_ok = R3Solver().solve(prob_ok)
+    assert res_ok.goodput_req_ids == (0,)
+    _exec_returned_schedule(world, env, res_ok, 7.0, slots=6)
+    assert req.node == 2 and req.t_delivered is not None and req.t_delivered <= 35.0

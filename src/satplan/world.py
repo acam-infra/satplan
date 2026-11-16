@@ -53,6 +53,7 @@ class Request:
     mig_phase: str = "idle"
     mig_prop_end_t: float | None = None
     mig_path_edges: tuple[int, ...] = ()
+    mig_path_nodes: tuple[int, ...] = ()
     n_mig: int = 0
 
     @property
@@ -157,8 +158,10 @@ class CoWorld:
         f = self._mig_flows.get(req_id)
         if f is not None:
             self.net.advance(self.env.now)
+            chunk_sent = max(0.0, float(f.sent))
             chunk_rem = max(0.0, float(f.remaining))
         else:
+            chunk_sent = 0.0
             chunk_rem = 0.0
         prop_rem = 0.0 if r.mig_prop_end_t is None else max(0.0, r.mig_prop_end_t - self.env.now)
         return MigrationSessionSnapshot(
@@ -166,9 +169,11 @@ class CoWorld:
             dst=r.mig_dst,
             target_bytes=r.mig_target_bytes,
             received_bytes=r.mig_received_bytes,
+            chunk_sent_bytes=chunk_sent,
             chunk_rem_bytes=chunk_rem,
             prop_rem_s=prop_rem,
             path_edges=r.mig_path_edges,
+            path_nodes=r.mig_path_nodes,
         )
 
     @property
@@ -283,6 +288,7 @@ class CoWorld:
         r.mig_phase = "idle"
         r.mig_prop_end_t = None
         r.mig_path_edges = ()
+        r.mig_path_nodes = ()
 
     def _run_migration(self, r: Request, p: tuple[list[int], list[int]], nbytes: float):
         try:
@@ -290,6 +296,7 @@ class CoWorld:
             self._mig_flows[r.i] = f
             r.mig_phase = "sending"
             r.mig_path_edges = tuple(p[1])
+            r.mig_path_nodes = tuple(p[0])
             self.log("mig_start", req=r.i, src=r.node, dst=r.mig_dst, bytes=nbytes)
             yield f.done
             self._mig_flows.pop(r.i, None)
