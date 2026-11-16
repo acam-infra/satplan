@@ -72,7 +72,13 @@ class ProblemBuilder:
         self.time_limit_s = time_limit_s
 
     def build(self, view: ForecastView, invariants: RebalanceInvariants) -> R3Problem:
-        dt_s = float(self.dt_s if self.dt_s is not None else invariants.interval_s)
+        ctrl_dt = view.control_period_s
+        if self.dt_s is not None:
+            dt_s = float(self.dt_s)
+        elif ctrl_dt < view.horizon_s - 1e-9:
+            dt_s = math.ceil((invariants.interval_s - 1e-9) / ctrl_dt) * ctrl_dt
+        else:
+            dt_s = float(invariants.interval_s)
         rem_horizon = max(dt_s, view.horizon_s - view.now)
         horizon_slots = max(1, min(self.horizon_slots, int(math.ceil(rem_horizon / dt_s))))
         params = view.physics_params

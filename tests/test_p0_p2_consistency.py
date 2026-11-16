@@ -1470,7 +1470,7 @@ def test_r1e_migrate_from_thermally_constrained_node_positive() -> None:
     w.pt.temp_C[2] = 20.0
     r = Request(0, 0, 0.0, False, 4800, 132, 1.0, 25.0)
     w.submit(r)
-    env.run(until=25.0)
+    env.run(until=30.0)
     assert r.node == 2 and r.n_mig == 1 and r.t_delivered is not None and r.t_delivered <= 25.0
 
 
@@ -1511,7 +1511,7 @@ def test_r1f_multi_tick_per_slot_dod_admission_and_phases(
     req = Request(0, 0, arr_t, False, 1, pout, 1.0, arr_t + 5.05)
     world.submit(req)
     env.run(until=start_s)
-    problem = ProblemBuilder(horizon_slots=3, time_limit_s=5.0).build(
+    problem = ProblemBuilder(horizon_slots=3, dt_s=5.0, time_limit_s=5.0).build(
         world.forecast_view, RebalanceInvariants.from_cfg(cfg)
     )
     result = R3Solver().solve(problem)
@@ -1560,7 +1560,7 @@ def test_r1f_multi_tick_intraslot_exit_and_unlimited_dod(
     world.submit(req)
     start_s = 2.05
     env.run(until=start_s)
-    problem = ProblemBuilder(horizon_slots=3, time_limit_s=5.0).build(
+    problem = ProblemBuilder(horizon_slots=3, dt_s=5.0, time_limit_s=5.0).build(
         world.forecast_view, RebalanceInvariants.from_cfg(cfg)
     )
     result = R3Solver().solve(problem)
@@ -1570,3 +1570,92 @@ def test_r1f_multi_tick_intraslot_exit_and_unlimited_dod(
     if expect_ontime:
         assert result.goodput_req_ids == (0,)
         assert 0 in actual_ontime
+
+
+@pytest.mark.parametrize(
+    ("control_period_s", "interval_s", "expected_dt_s", "arrival_t", "deadline_s", "expect_ontime"),
+    [
+        (2.0, 5.0, 6.0, 2.001, 18.0, False),  # R12 repro: 6s cadence (2,8,14,20) -> no false promise
+        (2.0, 5.0, 6.0, 2.001, 19.0, False),  # conservative [] <= {0}
+        (2.0, 5.0, 6.0, 2.001, 26.5, True),   # R12 positive (wide deadline): cools then finishes -> [0]
+        (5.0, 5.0, 5.0, 2.001, 23.0, True),   # period == interval: 5s cadence -> [0]
+        (7.0, 5.0, 7.0, 2.001, 22.0, True),   # period > interval: 7s cadence -> [0]
+        (1.7, 5.0, 5.1, 2.001, 28.0, True),   # non-integer ratio 5/1.7: 5.1s cadence -> [0]
+        (2.0, 5.0, 6.0, 3.5, 26.5, True),     # different arrival phase -> [0]
+    ],
+)
+def test_r1g_periodic_closed_loop_actuation_cadence(
+    control_period_s: float,
+    interval_s: float,
+    expected_dt_s: float,
+    arrival_t: float,
+    deadline_s: float,
+    expect_ontime: bool,
+) -> None:
+    """R1g: real CompositePolicy -> R3RuntimePlanner -> CoWorld closed loop aligns dt_s to actuation cadence."""
+    from satplan.planners import CompositePolicy
+    from satplan.r3_planner import R3RuntimePlanner
+
+    class _RecordingR3Planner:
+        requires_forecast = True
+
+        def __init__(self) -> None:
+            self.inner = R3RuntimePlanner(builder=ProblemBuilder(horizon_slots=4, time_limit_s=5.0))
+            self.records: list[tuple[float, tuple[int, ...], float]] = []
+
+        def plan(self, view, invariants):
+            action = self.inner.plan(view, invariants)
+            res = self.inner.last_result
+            assert res is not None
+            self.records.append((view.now, res.goodput_req_ids, self.inner.builder.build(view, invariants).dt_s))
+            return action
+
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "r1g-periodic-loop",
+        "horizon_s": 60.0,
+        "nodes": [{"id": 0, "role": "rs"}, {"id": 1, "role": "compute"}],
+        "edges": [{"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 60.0]]}],
+        "dark": [[], []],
+    })
+    cfg = _base_cfg()
+    cfg["control_period_s"] = control_period_s
+    cfg["rebalance_invariants"]["interval_s"] = interval_s
+    cfg["power"]["eclipse_dod_budget_j"] = None
+    cfg["thermal"].update(T0_C=50.0, T_max_C=50.0)
+    cfg["gpu"].update(t_fixed_s=0.0, t_weights_s=0.1, t_kv_tok_s=0.0, t_seq_s=0.0)
+    rec = _RecordingR3Planner()
+    policy = CompositePolicy(placer=lambda v, r: 1, planner=rec, invariants=RebalanceInvariants.from_cfg(cfg))
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, policy=policy, seed=1)
+    req = Request(0, 0, arrival_t, False, 1, 80, 1.0, deadline_s)
+    world.submit(req)
+    env.run(until=30.0)
+    actual_ontime = {0} if (req.t_delivered is not None and req.t_delivered <= deadline_s) else set()
+    call_times = [t for t, _, _ in rec.records]
+    assert len(call_times) >= 2
+    for t_a, t_b in zip(call_times, call_times[1:], strict=False):
+        assert t_b - t_a == pytest.approx(expected_dt_s, abs=1e-6)
+    for _t, pred_ids, model_dt in rec.records:
+        assert model_dt == pytest.approx(expected_dt_s, abs=1e-6)
+        assert set(pred_ids).issubset(actual_ontime)
+    if expect_ontime:
+        assert 0 in actual_ontime
+        assert any(0 in pred_ids for _, pred_ids, _ in rec.records)
+
+
+def test_r1g_periodic_closed_loop_migration_positive() -> None:
+    """R1g positive: periodic CompositePolicy -> R3RuntimePlanner -> CoWorld migrates under 6s cadence."""
+    tr = _two_cs_trace(c1_dark=[[0.0, 60.0]], c2_dark=[])
+    cfg = _base_cfg(hop_latency_s=0.0)
+    cfg["control_period_s"] = 2.0
+    cfg["rebalance_invariants"]["interval_s"] = 5.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["net"]["link_gbps"] = {"inter": 0.16, "rs": 10.0}
+    cfg["gpu"].update(t_fixed_s=0.0, t_weights_s=0.1, t_kv_tok_s=0.0, t_seq_s=0.0)
+    env = simpy.Environment()
+    w = CoWorld(env, tr, cfg, placer=get_placer("nearest"), planner=get_planner("r3_milp"), seed=1)
+    r = Request(0, 0, 0.0, False, 4800, 60, 1.0, 22.0)
+    w.submit(r)
+    env.run(until=22.0)
+    assert r.node == 2 and r.n_mig == 1 and r.t_delivered is not None and r.t_delivered <= 22.0
