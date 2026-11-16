@@ -900,3 +900,111 @@ def test_r2d_sending_partial_chunk_then_propagating(
     w_ok.apply_plan(PlanAction(migrations=(MigrationOrder(req_id=0, dst=2, nbytes=chunk1_bytes),)))
     env_ok.run(until=wide_deadline)
     assert r_ok.node == 2 and r_ok.t_delivered is not None and r_ok.t_delivered <= wide_deadline
+
+
+def _three_cs_shortcut_trace(
+    *,
+    intra_up: list[list[float]] | None = None,
+    shortcut_up: list[list[float]] | None = None,
+) -> Trace:
+    return Trace({
+        "schema": SCHEMA,
+        "name": "three-cs-shortcut",
+        "horizon_s": 60.0,
+        "nodes": [
+            {"id": 0, "role": "rs"},
+            {"id": 1, "role": "compute"},
+            {"id": 2, "role": "compute"},
+            {"id": 3, "role": "compute"},
+        ],
+        "edges": [
+            {"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 60.0]]},
+            {"u": 1, "v": 3, "kind": "intra", "up": intra_up if intra_up is not None else [[0.0, 60.0]]},
+            {"u": 3, "v": 2, "kind": "intra", "up": intra_up if intra_up is not None else [[0.0, 60.0]]},
+            {"u": 1, "v": 2, "kind": "inter", "up": shortcut_up if shortcut_up is not None else [[6.0, 60.0]]},
+        ],
+        "dark": [[], [[0.0, 60.0]], [], [[0.0, 60.0]]],
+    })
+
+
+def test_r2e_newly_issued_long_flow_cannot_reroute() -> None:
+    """R2e counterexample: newly issued nbytes=None flow at t=5s on 1->3->2 (5 MB/s) cannot reroute to 1->2 at t=6s."""
+    tr = _three_cs_shortcut_trace(intra_up=[[0.0, 60.0]], shortcut_up=[[6.0, 60.0]])
+    cfg = _base_cfg(hop_latency_s=0.0)
+    cfg["control_period_s"] = 100.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["net"]["link_gbps"] = {"intra": 0.04, "inter": 0.128, "rs": 10.0}  # intra=5 MB/s, inter=16 MB/s
+    cfg["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, placer=lambda view, req: 1, planner=get_planner("none"), seed=1)
+    req = Request(0, 0, 0.0, False, 25000, 50, 1.0, 20.0)  # 102.4 MB KV, 5s decode
+    world.submit(req)
+    env.run(until=5.0)
+    assert world.local_view.migration_snapshot(0) is None
+
+    problem = ProblemBuilder(horizon_slots=4, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    result = R3Solver().solve(problem)
+    # Apply the returned action in CoWorld and verify predicted goodput <= actual on-time IDs
+    world.apply_plan(result.action)
+    env.run(until=20.0)
+    actual_ontime = {0} if (req.t_delivered is not None and req.t_delivered <= 20.0) else set()
+    assert set(result.goodput_req_ids).issubset(actual_ontime)
+
+
+def test_r2e_static_shortcut_wait_and_link_break_lifecycle() -> None:
+    """R2e lifecycle: (1) static path wide-deadline positive, (2) wait for shortcut at t=10s, (3) link break -> resumable."""
+    # (1) Static path (no shortcut), wide deadline=35.0s -> completes on 1->3->2
+    tr_static = _three_cs_shortcut_trace(intra_up=[[0.0, 60.0]], shortcut_up=[])
+    cfg = _base_cfg(hop_latency_s=0.0)
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["net"]["link_gbps"] = {"intra": 0.04, "inter": 0.128, "rs": 10.0}
+    cfg["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+
+    env_s = simpy.Environment()
+    w_s = CoWorld(env_s, tr_static, cfg, placer=get_placer("nearest"), planner=get_planner("r3_milp"), seed=1)
+    r_s = Request(0, 0, 0.0, False, 25000, 50, 1.0, 40.0)
+    w_s.submit(r_s)
+    env_s.run(until=40.0)
+    assert r_s.node == 2 and r_s.t_delivered is not None and r_s.t_delivered <= 40.0
+
+    # (2) Shortcut appears at t=10s (slot 1): waiting at t=5s and starting on 1->2 at t=10s
+    # finishes migration at 16.4s, next tick t=20s decodes 5s -> delivers at ~25.0s <= 26.0s
+    tr_wait = _three_cs_shortcut_trace(intra_up=[[0.0, 60.0]], shortcut_up=[[10.0, 60.0]])
+    env_w = simpy.Environment()
+    w_w = CoWorld(env_w, tr_wait, cfg, placer=get_placer("nearest"), planner=get_planner("r3_milp"), seed=1)
+    r_w = Request(0, 0, 0.0, False, 25000, 50, 1.0, 26.0)
+    w_w.submit(r_w)
+    env_w.run(until=5.0)
+    assert r_w.node == 1
+    env_w.run(until=26.0)
+    assert r_w.node == 2 and r_w.t_delivered is not None and r_w.t_delivered <= 26.0
+
+    # (3) Old path 1->3->2 breaks at t=7s while 1->2 appears at t=10s:
+    # At t=5s solver must NOT promise impossible completion via free reroute;
+    # in CoWorld, starting at t=5s fails at t=7s -> resumable -> resumes on 1->2 at t=10s.
+    tr_brk = _three_cs_shortcut_trace(intra_up=[[0.0, 7.0]], shortcut_up=[[10.0, 60.0]])
+    cfg_manual = dict(cfg, control_period_s=100.0)
+    env_b = simpy.Environment()
+    w_b = CoWorld(env_b, tr_brk, cfg_manual, placer=lambda v, r: 1, planner=get_planner("none"), seed=1)
+    r_b = Request(0, 0, 0.0, False, 25000, 50, 1.0, 22.0)
+    w_b.submit(r_b)
+    env_b.run(until=5.0)
+    prob_b = ProblemBuilder(horizon_slots=4, time_limit_s=5.0).build(
+        w_b.forecast_view, RebalanceInvariants.from_cfg(cfg_manual)
+    )
+    res_b = R3Solver().solve(prob_b)
+    # If solver issues at t=5s, 1->3->2 breaks at t=7s so it cannot promise goodput at t<=22s
+    if res_b.action.migrations:
+        assert res_b.goodput_req_ids == ()
+    w_b.apply_plan(PlanAction(migrations=(MigrationOrder(req_id=0, dst=2, nbytes=None),)))
+    env_b.run(until=8.0)
+    snap_brk = w_b.local_view.migration_snapshot(0)
+    assert snap_brk is not None and snap_brk.phase == "resumable"
+    assert snap_brk.received_bytes == pytest.approx(10_000_000.0, rel=1e-4)
+    env_b.run(until=10.0)
+    w_b.apply_plan(PlanAction(migrations=(MigrationOrder(req_id=0, dst=2, nbytes=None),)))
+    env_b.run(until=25.0)
+    assert r_b.node == 2 and r_b.t_delivered is not None and r_b.t_delivered <= 25.0

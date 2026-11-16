@@ -129,6 +129,8 @@ class _VarLayout:
             ("off_u", self.R * self.J * self.H),
             ("off_m", self.R * self.J * self.H),
             ("off_tx", self.R * self.H),
+            ("off_start_flow", self.R * self.H),
+            ("off_cont_flow", self.R * self.H),
             ("off_tx_complete", self.R * self.H),
             ("off_init_chunk_done", self.R * self.H),
             ("off_init_chunk_active", self.R * self.H),
@@ -147,7 +149,9 @@ class _VarLayout:
             ("off_d", self.R * self.J * self.H),
             ("off_arc", self.R * self.J * self.J * self.H),
             ("off_arc_frozen", self.R * self.H),
+            ("off_e_use", self.R * self.E * self.H),
             ("off_b_edge", self.R * self.E * self.H),
+            ("off_flow_hops", self.R * self.H),
             ("off_eta", 1),
             ("off_xi", self.R),
         )
@@ -203,6 +207,12 @@ class _VarLayout:
     def tx(self, r: int, t: int) -> int:
         return self.off_tx + r * self.H + t
 
+    def start_flow(self, r: int, t: int) -> int:
+        return self.off_start_flow + r * self.H + t
+
+    def cont_flow(self, r: int, t: int) -> int:
+        return self.off_cont_flow + r * self.H + t
+
     def tx_complete(self, r: int, t: int) -> int:
         return self.off_tx_complete + r * self.H + t
 
@@ -255,8 +265,14 @@ class _VarLayout:
     def arc_frozen(self, r: int, t: int) -> int:
         return self.off_arc_frozen + r * self.H + t
 
+    def e_use(self, r: int, e: int, t: int) -> int:
+        return self.off_e_use + (r * self.E + e) * self.H + t
+
     def b_edge(self, r: int, e: int, t: int) -> int:
         return self.off_b_edge + (r * self.E + e) * self.H + t
+
+    def flow_hops(self, r: int, t: int) -> int:
+        return self.off_flow_hops + r * self.H + t
 
     def eta(self) -> int:
         return self.off_eta
@@ -553,6 +569,7 @@ class R3Solver:
         ub[idx.off_unlock : idx.off_b] = 1.0
         ub[idx.off_tx_frac : idx.off_prop_rem] = 1.0
         ub[idx.off_arc : idx.off_b_edge] = 1.0
+        integrality[idx.off_e_use : idx.off_b_edge] = 1
 
         tau = problem.r_th * problem.c_th
         alpha = math.exp(-problem.dt_s / tau) if tau > 0.0 else 0.0
@@ -581,6 +598,7 @@ class R3Solver:
         req: R3RequestSpec,
     ) -> None:
         j0 = node_pos[req.init_node]
+        ub[idx.cont_flow(r, 0)] = 0.0
         for j in range(idx.J):
             ub[idx.unlock(r, j, 0)] = 0.0
             col_u = idx.u(r, j, 0)
@@ -819,20 +837,12 @@ class R3Solver:
 
         # Propagation remaining time
         if problem.hop_latency_s > 0.0:
-            prop_terms = [(idx.prop_rem(r, t), 1.0), (idx.tx_frac(r, t), -problem.dt_s), (idx.tx_just_done(r, t), -m_prop)]
-            for (s_j, d_j, t_r), eids in routes.items():
-                if t_r == t:
-                    prop_terms.append((idx.arc(r, s_j, d_j, t), -problem.hop_latency_s * len(eids)))
-            if snap is not None and snap.phase == "sending":
-                frozen_e = req.init_mig_solver_edges or routes.get(
-                    (
-                        problem.nodes.index(next(n for n in problem.nodes if n.node_id == req.init_node)),
-                        problem.nodes.index(next(n for n in problem.nodes if n.node_id == snap.dst)),
-                        0,
-                    ),
-                    (),
-                )
-                prop_terms.append((idx.arc_frozen(r, t), -problem.hop_latency_s * len(frozen_e)))
+            prop_terms = [
+                (idx.prop_rem(r, t), 1.0),
+                (idx.tx_frac(r, t), -problem.dt_s),
+                (idx.tx_just_done(r, t), -m_prop),
+                (idx.flow_hops(r, t), -problem.hop_latency_s),
+            ]
             cb.add(prop_terms, -problem.dt_s - m_prop, math.inf)
             if t >= 1:
                 cb.add(
@@ -884,7 +894,7 @@ class R3Solver:
                 edge_routes_by_t[t][e_i].append((s_j, d_j))
 
         frozen_by_req: list[tuple[int, ...]] = []
-        for r, req in enumerate(problem.requests):
+        for req in problem.requests:
             snap = _effective_init_mig(req)
             if snap is not None and snap.phase == "sending":
                 j0 = problem.nodes.index(next(n for n in problem.nodes if n.node_id == req.init_node))
@@ -892,19 +902,27 @@ class R3Solver:
                 frozen_by_req.append(req.init_mig_solver_edges or routes.get((j0, d0, 0), ()))
             else:
                 frozen_by_req.append(())
-            self._add_request_net_constraints(problem, idx, cb, r, req, snap, frozen_by_req[r])
+        m_hops = float(max([len(e) for e in routes.values()] + [len(fe) for fe in frozen_by_req] + [0]))
+        for r, req in enumerate(problem.requests):
+            snap = _effective_init_mig(req)
+            self._add_request_net_constraints(
+                problem, idx, routes, edge_routes_by_t, cb, r, req, snap, frozen_by_req[r], m_hops
+            )
         for e_i, edge in enumerate(problem.edges):
-            self._add_edge_fair_constraints(problem, idx, edge_routes_by_t, frozen_by_req, cb, e_i, edge)
+            self._add_edge_fair_constraints(problem, idx, cb, e_i, edge)
 
     def _add_request_net_constraints(  # noqa: PLR0913
         self,
         problem: R3Problem,
         idx: _VarLayout,
+        routes: dict[tuple[int, int, int], tuple[int, ...]],
+        edge_routes_by_t: list[list[list[tuple[int, int]]]],
         cb: _ConstraintBuilder,
         r: int,
         req: R3RequestSpec,
         snap: MigrationSessionSnapshot | None,
         frozen_edges: tuple[int, ...],
+        m_hops: float,
     ) -> None:
         is_sending = snap is not None and snap.phase == "sending"
         for t in range(idx.H):
@@ -915,10 +933,24 @@ class R3Solver:
                 cb.add([(idx.d(r, j, t), 1.0), (idx.m(r, j, t), -req.kv_bytes)], -math.inf, 0.0)
 
             cb.add([(idx.arc_frozen(r, t), 1.0), (idx.init_chunk_active(r, t), -1.0)], 0.0, 0.0)
+            cb.add(
+                [(idx.arc_frozen(r, t), 1.0), (idx.start_flow(r, t), 1.0), (idx.cont_flow(r, t), 1.0), (idx.tx(r, t), -1.0)],
+                0.0,
+                0.0,
+            )
             arc_all = [(idx.arc(r, s, d, t), 1.0) for s in range(idx.J) for d in range(idx.J) if s != d]
-            cb.add(arc_all + [(idx.arc_frozen(r, t), 1.0), (idx.tx(r, t), -1.0)], 0.0, 0.0)
+            cb.add(arc_all + [(idx.start_flow(r, t), -1.0)], 0.0, 0.0)
+            if t >= 1:
+                cb.add([(idx.cont_flow(r, t), 1.0), (idx.start_flow(r, t - 1), -1.0), (idx.cont_flow(r, t - 1), -1.0)], -math.inf, 0.0)
+                cb.add([(idx.cont_flow(r, t), 1.0), (idx.tx_complete(r, t - 1), 1.0)], -math.inf, 1.0)
+                cb.add(
+                    [(idx.cont_flow(r, t), 1.0), (idx.start_flow(r, t - 1), -1.0), (idx.cont_flow(r, t - 1), -1.0), (idx.tx_complete(r, t - 1), 1.0)],
+                    0.0,
+                    math.inf,
+                )
             if is_sending and snap is not None:
                 self._add_init_chunk_slot_constraints(problem, idx, cb, r, req, snap, frozen_edges, t)
+            self._add_flow_path_locking_constraints(idx, routes, edge_routes_by_t, cb, r, frozen_edges, m_hops, t)
             for s in range(idx.J):
                 cb.add(
                     [(idx.arc(r, s, d, t), 1.0) for d in range(idx.J) if d != s] + [(idx.u(r, s, t), -1.0)],
@@ -931,6 +963,44 @@ class R3Solver:
                     -math.inf,
                     0.0,
                 )
+
+    @staticmethod
+    def _add_flow_path_locking_constraints(  # noqa: PLR0913
+        idx: _VarLayout,
+        routes: dict[tuple[int, int, int], tuple[int, ...]],
+        edge_routes_by_t: list[list[list[tuple[int, int]]]],
+        cb: _ConstraintBuilder,
+        r: int,
+        frozen_edges: tuple[int, ...],
+        m_hops: float,
+        t: int,
+    ) -> None:
+        cb.add([(idx.flow_hops(r, t), 1.0), (idx.tx(r, t), -m_hops)], -math.inf, 0.0)
+        cb.add([(idx.flow_hops(r, t), 1.0), (idx.arc_frozen(r, t), -float(len(frozen_edges)))], 0.0, math.inf)
+        hop_arc = [
+            (idx.arc(r, s_j, d_j, t), -float(len(eids)))
+            for (s_j, d_j, t_r), eids in routes.items()
+            if t_r == t
+        ]
+        cb.add([(idx.flow_hops(r, t), 1.0)] + hop_arc, 0.0, math.inf)
+        cb.add([(idx.flow_hops(r, t), 1.0), (idx.start_flow(r, t), m_hops)] + hop_arc, -math.inf, m_hops)
+        if t >= 1:
+            cb.add([(idx.flow_hops(r, t), 1.0), (idx.flow_hops(r, t - 1), -1.0), (idx.cont_flow(r, t), -m_hops)], -m_hops, math.inf)
+            cb.add([(idx.flow_hops(r, t), 1.0), (idx.flow_hops(r, t - 1), -1.0), (idx.cont_flow(r, t), m_hops)], -math.inf, m_hops)
+
+        frozen_set = set(frozen_edges)
+        for e_i in range(idx.E):
+            cb.add([(idx.e_use(r, e_i, t), 1.0), (idx.tx(r, t), -1.0)], -math.inf, 0.0)
+            if e_i in frozen_set:
+                cb.add([(idx.e_use(r, e_i, t), 1.0), (idx.arc_frozen(r, t), -1.0)], 0.0, math.inf)
+            else:
+                cb.add([(idx.e_use(r, e_i, t), 1.0), (idx.arc_frozen(r, t), 1.0)], -math.inf, 1.0)
+            arc_terms = [(idx.arc(r, s_j, d_j, t), -1.0) for s_j, d_j in edge_routes_by_t[t][e_i]]
+            cb.add([(idx.e_use(r, e_i, t), 1.0)] + arc_terms, 0.0, math.inf)
+            cb.add([(idx.e_use(r, e_i, t), 1.0), (idx.start_flow(r, t), 1.0)] + arc_terms, -math.inf, 1.0)
+            if t >= 1:
+                cb.add([(idx.e_use(r, e_i, t), 1.0), (idx.e_use(r, e_i, t - 1), -1.0), (idx.cont_flow(r, t), -1.0)], -1.0, math.inf)
+                cb.add([(idx.e_use(r, e_i, t), 1.0), (idx.e_use(r, e_i, t - 1), -1.0), (idx.cont_flow(r, t), 1.0)], -math.inf, 1.0)
 
     @staticmethod
     def _add_init_chunk_slot_constraints(  # noqa: PLR0913
@@ -990,12 +1060,10 @@ class R3Solver:
                     math.inf,
                 )
 
-    def _add_edge_fair_constraints(  # noqa: PLR0913
+    def _add_edge_fair_constraints(
         self,
         problem: R3Problem,
         idx: _VarLayout,
-        edge_routes_by_t: list[list[list[tuple[int, int]]]],
-        frozen_by_req: list[tuple[int, ...]],
         cb: _ConstraintBuilder,
         e_i: int,
         edge: R3EdgeSpec,
@@ -1005,34 +1073,25 @@ class R3Solver:
             cap_bytes = (problem.dt_s / 8.0) * max(0.0, edge.tot_bps[t] - bg)
             cb.add([(idx.b_edge(r, e_i, t), 1.0) for r in range(idx.R)], -math.inf, cap_bytes)
 
-            pairs = edge_routes_by_t[t][e_i]
-            frozen_reqs = [r for r in range(idx.R) if e_i in frozen_by_req[r]]
             if idx.K_max >= 2:
                 cb.add([(idx.w(e_i, t, k), 1.0) for k in range(1, idx.K_max + 1)], -math.inf, 1.0)
                 count_terms = [(idx.w(e_i, t, k), float(k)) for k in range(1, idx.K_max + 1)]
-                for r in range(idx.R):
-                    for s_j, d_j in pairs:
-                        count_terms.append((idx.arc(r, s_j, d_j, t), -1.0))
-                for r in frozen_reqs:
-                    count_terms.append((idx.arc_frozen(r, t), -1.0))
+                count_terms.extend((idx.e_use(r, e_i, t), -1.0) for r in range(idx.R))
                 cb.add(count_terms, 0.0, 0.0)
 
             for r, req in enumerate(problem.requests):
-                use_terms = [(idx.arc(r, s_j, d_j, t), 1.0) for s_j, d_j in pairs]
-                if e_i in frozen_by_req[r]:
-                    use_terms.append((idx.arc_frozen(r, t), 1.0))
-                cb.add([(idx.b_edge(r, e_i, t), 1.0)] + [(c, -req.kv_bytes) for c, _ in use_terms], -math.inf, 0.0)
+                use_terms = [(idx.e_use(r, e_i, t), 1.0)]
+                cb.add([(idx.b_edge(r, e_i, t), 1.0), (idx.e_use(r, e_i, t), -req.kv_bytes)], -math.inf, 0.0)
                 cb.add(
-                    [(idx.b_edge(r, e_i, t), 1.0), (idx.b(r, t), -1.0)] + [(c, -req.kv_bytes) for c, _ in use_terms],
+                    [(idx.b_edge(r, e_i, t), 1.0), (idx.b(r, t), -1.0), (idx.e_use(r, e_i, t), -req.kv_bytes)],
                     -req.kv_bytes,
                     math.inf,
                 )
                 if idx.K_max >= 2:
-                    fair_terms = [(idx.b_edge(r, e_i, t), 1.0)]
+                    fair_terms = [(idx.b_edge(r, e_i, t), 1.0), (idx.e_use(r, e_i, t), req.kv_bytes)]
                     fair_terms.extend((idx.w(e_i, t, k), -(cap_bytes / k)) for k in range(1, idx.K_max + 1))
-                    fair_terms.extend((c, req.kv_bytes) for c, _ in use_terms)
                     cb.add(fair_terms, -math.inf, req.kv_bytes)
-                if cap_bytes > 0.0 and use_terms:
+                if cap_bytes > 0.0:
                     self._add_tx_frac_bound(idx, cb, e_i, t, r, cap_bytes, use_terms)
 
     @staticmethod
