@@ -10,7 +10,7 @@ import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import coo_matrix
 
-from satplan.actions import MigrationOrder, PlanAction
+from satplan.actions import MigrationOrder, MigrationSessionSnapshot, PlanAction
 
 
 @dataclass(frozen=True)
@@ -52,6 +52,7 @@ class R3RequestSpec:
     init_mig_dst: int | None = None
     init_mig_received_bytes: float = 0.0
     init_mig_in_flight: bool = False
+    init_mig: MigrationSessionSnapshot | None = None
     n_mig: int = 0
 
 
@@ -339,6 +340,22 @@ def _resolve_routes(
     return routes
 
 
+def _effective_init_mig(req: R3RequestSpec) -> MigrationSessionSnapshot | None:
+    if req.init_mig is not None:
+        return None if req.init_mig.phase == "idle" else req.init_mig
+    if req.init_mig_dst is not None:
+        phase = "sending" if req.init_mig_in_flight else "resumable"
+        rem = max(0.0, req.kv_bytes - req.init_mig_received_bytes)
+        return MigrationSessionSnapshot(
+            phase=phase,
+            dst=req.init_mig_dst,
+            target_bytes=req.kv_bytes,
+            received_bytes=req.init_mig_received_bytes,
+            chunk_rem_bytes=rem if req.init_mig_in_flight else 0.0,
+        )
+    return None
+
+
 def _classify_milp_status(res: object) -> tuple[str, str]:
     st = getattr(res, "status", None)
     msg = str(getattr(res, "message", ""))
@@ -548,14 +565,14 @@ class R3Solver:
             col_u = idx.u(r, j, 0)
             lb[col_u] = 1.0 if j == j0 else 0.0
             ub[col_u] = 1.0 if j == j0 else 0.0
-        if req.init_mig_dst is not None:
-            d0 = node_pos[req.init_mig_dst]
+        snap = _effective_init_mig(req)
+        if snap is not None:
+            d0 = node_pos[snap.dst]
             for j in range(idx.J):
                 col_m = idx.m(r, j, 0)
                 lb[col_m] = 1.0 if j == d0 else 0.0
                 ub[col_m] = 1.0 if j == d0 else 0.0
-            if req.init_mig_in_flight:
-                lb[idx.tx(r, 0)] = 1.0
+            self._apply_init_mig_phase_bounds(problem, idx, lb, ub, r, req, snap)
         elif problem.max_mig_per_req is not None and req.n_mig >= problem.max_mig_per_req:
             for j in range(idx.J):
                 for t in range(idx.H):
@@ -565,6 +582,29 @@ class R3Solver:
                 for d_j in range(idx.J):
                     if (s_j, d_j, t) not in routes:
                         ub[idx.arc(r, s_j, d_j, t)] = 0.0
+
+    @staticmethod
+    def _apply_init_mig_phase_bounds(  # noqa: PLR0913
+        problem: R3Problem,
+        idx: _VarLayout,
+        lb: np.ndarray,
+        ub: np.ndarray,
+        r: int,
+        req: R3RequestSpec,
+        snap: MigrationSessionSnapshot,
+    ) -> None:
+        if snap.phase == "sending":
+            lb[idx.tx(r, 0)] = 1.0
+            ub[idx.b(r, 0)] = min(req.kv_bytes, max(0.0, snap.chunk_rem_bytes))
+        elif snap.phase == "propagating_chunk":
+            block_slots = max(1, math.ceil(snap.prop_rem_s / problem.dt_s - 1e-9))
+            for t in range(min(idx.H, block_slots)):
+                ub[idx.tx(r, t)] = 0.0
+        elif snap.phase == "propagating_unlock":
+            ub[idx.tx(r, 0)] = 0.0
+            lb[idx.tx_complete(r, 0)] = 1.0
+            ub[idx.tx_just_done(r, 0)] = 0.0
+            lb[idx.prop_rem(r, 0)] = max(0.0, snap.prop_rem_s - problem.dt_s)
 
     def _add_power_thermal_constraints(self, problem: R3Problem, idx: _VarLayout, cb: _ConstraintBuilder) -> None:
         tau = problem.r_th * problem.c_th
@@ -722,12 +762,14 @@ class R3Solver:
         cb.add(act_terms + rem_active, 1.0, 1.0)
 
         # tx_complete and tx_just_done (bidirectional one-shot per session)
+        snap = _effective_init_mig(req)
         cb.add([(idx.tx_complete(r, t), 1.0)] + [(idx.m(r, j, t), -1.0) for j in range(idx.J)], -math.inf, 0.0)
         cb.add([(idx.tx_just_done(r, t), 1.0), (idx.tx_complete(r, t), -1.0)], -math.inf, 0.0)
         if t == 0:
-            cb.add([(idx.tx_just_done(r, 0), 1.0), (idx.tx_complete(r, 0), -1.0)], 0.0, 0.0)
-            if req.init_mig_dst is None or req.init_mig_received_bytes < req.kv_bytes - 1e-6:
-                cb.add([(idx.tx_just_done(r, 0), 1.0), (idx.tx(r, 0), -1.0)], -math.inf, 0.0)
+            if snap is None or snap.phase != "propagating_unlock":
+                cb.add([(idx.tx_just_done(r, 0), 1.0), (idx.tx_complete(r, 0), -1.0)], 0.0, 0.0)
+                if snap is None or snap.received_bytes < req.kv_bytes - 1e-6:
+                    cb.add([(idx.tx_just_done(r, 0), 1.0), (idx.tx(r, 0), -1.0)], -math.inf, 0.0)
         else:
             prev_terms = [(idx.tx_just_done(r, t), 1.0), (idx.tx_complete(r, t), -1.0), (idx.tx_complete(r, t - 1), 1.0)]
             prev_terms.extend((idx.unlock(r, j, t), -1.0) for j in range(idx.J))
@@ -963,10 +1005,16 @@ class R3Solver:
                 elif x_sol[idx.x(r, j0, 0)] > 0.5 and req.currently_paused:
                     resume_ids.append(req.req_id)
 
-            if x_sol[idx.tx(r, 0)] > 0.5 and not req.init_mig_in_flight:
+            snap = _effective_init_mig(req)
+            in_flight_0 = snap is not None and snap.phase in ("sending", "propagating_chunk", "propagating_unlock")
+            if x_sol[idx.tx(r, 0)] > 0.5 and not in_flight_0:
                 dst_j = max(range(idx.J), key=lambda j: float(x_sol[idx.m(r, j, 0)]))
                 if x_sol[idx.m(r, dst_j, 0)] > 0.5 and dst_j != j0:
-                    init_recv = req.init_mig_received_bytes if problem.nodes[dst_j].node_id == req.init_mig_dst else 0.0
+                    init_recv = (
+                        snap.received_bytes
+                        if (snap is not None and problem.nodes[dst_j].node_id == snap.dst)
+                        else 0.0
+                    )
                     rem_bytes = max(0.0, req.kv_bytes - init_recv)
                     sent_0 = float(x_sol[idx.b(r, 0)])
                     nbytes = None if sent_0 >= rem_bytes - 1e-6 else sent_0

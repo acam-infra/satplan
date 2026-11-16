@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from satplan.trace import INF
 
 if TYPE_CHECKING:
+    from satplan.actions import MigrationSessionSnapshot
     from satplan.power_thermal import PhysicsParams
     from satplan.world import CoWorld, Request
 
@@ -88,6 +89,12 @@ class LocalStateView:
 
     def edge_rates(self) -> dict[int, float]:
         return dict(self._w.net_edge_rates())
+
+    def upload_edge_rates(self) -> dict[int, float]:
+        return self._w.upload_edge_rates()
+
+    def migration_snapshot(self, req_id: int) -> MigrationSessionSnapshot | None:
+        return self._w.migration_snapshot(req_id)
 
     def edge_utilization(self) -> dict[int, float]:
         rates = self.edge_rates()

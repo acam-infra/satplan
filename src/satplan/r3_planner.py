@@ -179,7 +179,7 @@ class ProblemBuilder:
         view: ForecastView, horizon_slots: int, dt_s: float
     ) -> tuple[tuple[R3EdgeSpec, ...], dict[tuple[int, int, int], tuple[int, ...]]]:
         compute_set = set(view.compute_nodes)
-        cur_rates = view.edge_rates()
+        cur_rates = view.upload_edge_rates()
         edges: list[R3EdgeSpec] = []
         dir_edge_idx: dict[tuple[int, int], int] = {}
         for e_idx, (u, v) in enumerate(view.edges):
@@ -236,12 +236,13 @@ class ProblemBuilder:
             else:
                 eff_tok = rem_tok
                 eff_dl = raw_dl
-            mig_kv_tok = r.kv if r.mig_dst is not None else kv_ubs[r.i]
+            snap = view.migration_snapshot(r.i)
+            kv_bytes = max(snap.target_bytes, 1.0) if snap is not None else max(kv_ubs[r.i] * view.bpt, 1.0)
             req_specs.append(
                 R3RequestSpec(
                     req_id=r.i,
                     init_node=r.node,
-                    kv_bytes=max(mig_kv_tok * view.bpt, 1.0),
+                    kv_bytes=kv_bytes,
                     remaining_tokens=eff_tok,
                     deadline_s=eff_dl,
                     weight=1.0,
@@ -251,6 +252,7 @@ class ProblemBuilder:
                     init_mig_dst=r.mig_dst,
                     init_mig_received_bytes=float(r.mig_received_bytes),
                     init_mig_in_flight=r.mig_in_flight,
+                    init_mig=snap,
                     n_mig=r.n_mig,
                 )
             )

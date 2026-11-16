@@ -674,3 +674,108 @@ def test_r2a_repeated_propagation_completion_blocked() -> None:
     assert res_ok.goodput_req_ids == (0,)
     # Node 1 cannot run high tier before slot 5 (t=25s) when propagation finishes
     assert res_ok.node_tiers[1][:5] == (0, 0, 0, 0, 0)
+
+
+def test_r2b_partial_session_in_propagation_must_not_promise_impossible_16s() -> None:
+    """R2b counterexample: partial chunk in propagation wait (t=6s, prop ends 9.4s) cannot resume at t=6s."""
+    cfg = _base_cfg(hop_latency_s=4.0)
+    cfg["control_period_s"] = 100.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+    env = simpy.Environment()
+    world = CoWorld(
+        env,
+        _two_cs_trace(c1_dark=[[0.0, 60.0]]),
+        cfg,
+        placer=lambda view, req: 1,
+        planner=get_planner("none"),
+        seed=1,
+    )
+    req = Request(0, 0, 0.0, False, 25000, 50, 1.0, 16.0)
+    world.submit(req)
+    env.run(until=5.0)
+    world.apply_plan(PlanAction(migrations=(MigrationOrder(req_id=0, dst=2, nbytes=50_000_000.0),)))
+    # At t=6.0s: 50 MB finished sending at 5.4s, now waiting 4s propagation until 9.4s
+    env.run(until=6.0)
+    assert req.mig_in_flight is True
+    assert req.mig_received_bytes == pytest.approx(50_000_000.0)
+    assert world.local_view.edge_rates() == {}
+
+    problem = ProblemBuilder(horizon_slots=3, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    result = R3Solver().solve(problem)
+    assert result.action.migrations == ()
+    # Earliest physical finish is 9.4 + 0.4192 + 4.0 + 5.0 = 18.8192s > 16.0s
+    assert result.goodput_req_ids == ()
+
+    # Positive case with wide deadline (26s) under real periodic control: resumes and finishes on time
+    cfg_ok = _base_cfg(hop_latency_s=4.0)
+    cfg_ok["rebalance_invariants"]["interval_s"] = 3.0
+    cfg_ok["control_period_s"] = 3.0
+    cfg_ok["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg_ok["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+    env_ok = simpy.Environment()
+    w_ok = CoWorld(
+        env_ok,
+        _two_cs_trace(c1_dark=[[0.0, 60.0]]),
+        cfg_ok,
+        placer=get_placer("nearest"),
+        planner=get_planner("r3_milp"),
+        seed=1,
+    )
+    r_ok = Request(0, 0, 0.0, False, 25000, 50, 1.0, 26.0)
+    w_ok.submit(r_ok)
+    env_ok.run(until=4.5)
+    w_ok.apply_plan(PlanAction(migrations=(MigrationOrder(req_id=0, dst=2, nbytes=50_000_000.0),)))
+    env_ok.run(until=26.0)
+    assert r_ok.node == 2
+    assert r_ok.n_mig == 1
+    assert r_ok.t_delivered is not None and r_ok.t_delivered <= 26.0
+
+
+def test_r2b_snapshots_sending_and_propagating_unlock_across_ticks() -> None:
+    """Verify sending and propagating_unlock snapshots preserve KV/inflight and do not resend."""
+    cfg = _base_cfg(hop_latency_s=4.0)
+    cfg["control_period_s"] = 100.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["net"]["link_gbps"]["inter"] = 0.2  # 25 MB/s -> 102.4 MB takes 4.096s + 4s prop = 8.096s
+    cfg["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+    env = simpy.Environment()
+    world = CoWorld(
+        env,
+        _two_cs_trace(c1_dark=[[0.0, 60.0]]),
+        cfg,
+        placer=lambda view, req: 1,
+        planner=get_planner("none"),
+        seed=1,
+    )
+    req = Request(0, 0, 0.0, False, 25000, 50, 1.0, 25.0)
+    world.submit(req)
+    env.run(until=5.0)
+    world.apply_plan(PlanAction(migrations=(MigrationOrder(req_id=0, dst=2, nbytes=None),)))
+
+    # At t=7.0s: still sending (50 MB sent, 52.4 MB remaining)
+    env.run(until=7.0)
+    snap_send = world.local_view.migration_snapshot(0)
+    assert snap_send is not None and snap_send.phase == "sending"
+    assert snap_send.chunk_rem_bytes == pytest.approx(52_400_000.0, rel=1e-4)
+    prob_send = ProblemBuilder(horizon_slots=3, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    res_send = R3Solver().solve(prob_send)
+    assert res_send.action.migrations == ()
+    assert world.local_view.inflight_migrations == 1
+
+    # At t=11.0s: all 102.4 MB received (finished at 9.096s), now in propagating_unlock until 13.096s
+    env.run(until=11.0)
+    snap_prop = world.local_view.migration_snapshot(0)
+    assert snap_prop is not None and snap_prop.phase == "propagating_unlock"
+    assert snap_prop.prop_rem_s == pytest.approx(2.096, abs=1e-2)
+    prob_prop = ProblemBuilder(horizon_slots=3, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    res_prop = R3Solver().solve(prob_prop)
+    assert res_prop.action.migrations == ()
+    assert res_prop.goodput_req_ids == (0,)  # Unlocks by t=16s, decodes 5s -> finishes 21s <= 25s
+    assert res_prop.node_tiers[2][0] == 0  # Cannot decode in slot 0 [11, 16] while propagating
