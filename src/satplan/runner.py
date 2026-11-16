@@ -10,7 +10,7 @@ import yaml
 
 from satplan.metrics import Recorder, RunResult, cumulative_good, request_table, summarize, write_playback
 from satplan.placers import get_placer
-from satplan.planners import get_planner
+from satplan.planners import CompositePolicy, RebalanceInvariants, get_planner
 from satplan.trace import Trace
 from satplan.world import CoWorld, make_requests
 
@@ -58,12 +58,12 @@ def run_simulation(
     env = simpy.Environment()
     frame_s = float(cfg.get("frame_s", 10.0))
     rec = Recorder(frame_s) if record else None
+    policy = CompositePolicy(get_placer(placer), get_planner(planner), RebalanceInvariants.from_cfg(cfg))
     w = CoWorld(
         env,
         trace,
         cfg,
-        placer=get_placer(placer),
-        planner=get_planner(planner),
+        policy=policy,
         recorder=rec,
         seed=seed,
     )
@@ -92,7 +92,7 @@ def main(argv: list[str] | None = None) -> None:
     trace = Trace.load((Path(cfg["_dir"]) / cfg["trace"]).resolve())
     placer = str(cfg.get("placer", "nearest"))
     planner = str(cfg.get("planner", "none"))
-    seed = int(cfg.get("seeds", [1])[0])
+    seed = int(cfg.get("seed", cfg.get("seeds", [1])[0]))
     result = run_simulation(trace, cfg, placer, planner, seed, record=bool(args.viz))
     print(json.dumps(result.metrics, indent=2))
     if args.out:

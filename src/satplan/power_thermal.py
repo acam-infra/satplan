@@ -189,6 +189,10 @@ class PowerThermalModel:
             tier_override=self.explicit_tier_idx[node],
         )
 
+    def candidate_clock_f(self, node: int, active_batch: int, *, is_eclipse: bool, dt: float | None = None) -> float:
+        """Effective clock frequency if node runs at least one active request (0.0 if unavailable/DoD exhausted)."""
+        return self.current_op(node, max(active_batch, 1), is_eclipse=is_eclipse, dt=dt).clock_f
+
     def set_explicit_tier(self, node: int, tier_idx: int | None) -> None:
         if tier_idx is not None and self.params.discrete and not (0 <= tier_idx < len(self.params.tiers)):
             raise ValueError(f"invalid tier index {tier_idx} for node {node}")

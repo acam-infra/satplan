@@ -3,6 +3,7 @@ title: "satplan baseline: Walker 53 4x10 + 3 RS (nearest + none)"
 trace: ../../satsim/input/traces/coop-w53.trace.json
 scenario: ../../satsim/input/traces/coop-w53.scenario.json
 delivery: final
+rs_downlink: false
 control_period_s: 2.0
 frame_s: 10.0
 placer: nearest
