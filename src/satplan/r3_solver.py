@@ -168,32 +168,42 @@ class _VarLayout:
         for name, count in sizes:
             setattr(self, name, off)
             off += count
-        self.sunlit_s: list[tuple[float, ...]] = []
+        self.sunlit_s: list[list[float]] = []
         self.ecl_windows: list[tuple[R3EclipseWindowSpec, ...]] = []
-        self._u_ecl_map: dict[tuple[int, int, int, int], int] = {}
-        self._u_ecl_max: dict[tuple[int, int, int, int], float] = {}
-        self._u_ecl_by_slot: dict[tuple[int, int, int], list[tuple[int, float]]] = {}
+        self._a_ecl_map: dict[tuple[int, int, int, int], int] = {}
+        self._dod_start_map: dict[tuple[int, int, int], int] = {}
+        self._a_ecl_by_slot: dict[tuple[int, int, int], list[tuple[int, float]]] = {}
+        self._ecl_win_slots: dict[tuple[int, int], list[tuple[int, float]]] = {}
         ctrl_dt = problem.dt_s if problem.control_period_s is None else problem.control_period_s
         for j, node in enumerate(problem.nodes):
             s_s, e_wins = _resolve_node_power_windows(problem, node)
-            self.sunlit_s.append(s_s)
+            sun_j = list(s_s)
+            self.sunlit_s.append(sun_j)
             self.ecl_windows.append(e_wins)
             for w_idx, win in enumerate(e_wins):
                 budget = win.budget_j
-                if budget is not None and budget <= 1e-9:
+                if budget is None:
+                    for t, dur in win.slot_durations_s:
+                        if dur > 1e-12:
+                            sun_j[t] += dur
                     continue
-                for t, dur in win.slot_durations_s:
-                    if dur <= 1e-12:
-                        continue
+                if budget <= 1e-9:
+                    continue
+                slots = [(t, dur) for t, dur in win.slot_durations_s if dur > 1e-12]
+                if not slots:
+                    continue
+                self._ecl_win_slots[(j, w_idx)] = slots
+                for k, (t, dur) in enumerate(slots):
+                    self._dod_start_map[(j, w_idx, k)] = off
+                    off += 1
                     for l_i, tier in enumerate(problem.tiers):
                         if not (tier.power_w > 0.0 or tier.rate_tok_s > 0.0):
                             continue
-                        if budget is not None and tier.power_w * ctrl_dt > budget + 1e-9:
+                        if tier.power_w * ctrl_dt > budget + 1e-9:
                             continue
-                        key = (j, w_idx, t, l_i)
-                        self._u_ecl_map[key] = off
-                        self._u_ecl_max[key] = dur
-                        self._u_ecl_by_slot.setdefault((j, t, l_i), []).append((off, dur))
+                        key = (j, w_idx, k, l_i)
+                        self._a_ecl_map[key] = off
+                        self._a_ecl_by_slot.setdefault((j, t, l_i), []).append((off, dur))
                         off += 1
         self.total = off
 
@@ -656,13 +666,14 @@ class R3Solver:
         for r, req in enumerate(problem.requests):
             self._apply_request_bounds(problem, idx, node_pos, routes, lb, ub, r, req)
 
-        ctrl_dt = problem.dt_s if problem.control_period_s is None else problem.control_period_s
-        for (j, w_idx, _t, l_i), var_id in idx._u_ecl_map.items():
+        for var_id in idx._a_ecl_map.values():
+            integrality[var_id] = 1
+            ub[var_id] = 1.0
+        for (j, w_idx, k), var_id in idx._dod_start_map.items():
             budget = idx.ecl_windows[j][w_idx].budget_j
-            if budget is not None and (budget <= 1e-9 or problem.tiers[l_i].power_w * ctrl_dt > budget + 1e-9):
-                ub[var_id] = 0.0
-            else:
-                ub[var_id] = 1.0
+            assert budget is not None
+            lb[var_id] = budget if k == 0 else 0.0
+            ub[var_id] = budget
 
         lb[idx.eta()] = -math.inf
         return integrality, lb, ub
@@ -746,20 +757,47 @@ class R3Solver:
     def _add_eclipse_dod_constraints(
         problem: R3Problem, idx: _VarLayout, j: int, cb: _ConstraintBuilder
     ) -> None:
+        ctrl_dt = problem.dt_s if problem.control_period_s is None else problem.control_period_s
         for w_idx, win in enumerate(idx.ecl_windows[j]):
-            budget_terms: list[tuple[int, float]] = []
-            for t, _dur in win.slot_durations_s:
-                for l_i, tier in enumerate(problem.tiers):
-                    key = (j, w_idx, t, l_i)
-                    u_var = idx._u_ecl_map.get(key)
-                    if u_var is None:
-                        continue
-                    dur = idx._u_ecl_max[key]
-                    cb.add([(u_var, 1.0), (idx.z(j, l_i, t), -1.0)], -math.inf, 0.0)
-                    if win.budget_j is not None and tier.power_w > 0.0:
-                        budget_terms.append((u_var, tier.power_w * dur))
-            if win.budget_j is not None and budget_terms:
-                cb.add(budget_terms, -math.inf, win.budget_j)
+            slots = idx._ecl_win_slots.get((j, w_idx))
+            if not slots or win.budget_j is None:
+                continue
+            budget = win.budget_j
+            for k, (t, dur) in enumerate(slots):
+                d_k = idx._dod_start_map[(j, w_idx, k)]
+                a_vars = [
+                    (l_i, problem.tiers[l_i], idx._a_ecl_map[(j, w_idx, k, l_i)])
+                    for l_i in range(idx.L)
+                    if (j, w_idx, k, l_i) in idx._a_ecl_map
+                ]
+                if a_vars:
+                    cb.add([(a_var, 1.0) for _, _, a_var in a_vars], -math.inf, 1.0)
+                if idx.sunlit_s[j][t] <= 1e-12:
+                    for l_i, tier in enumerate(problem.tiers):
+                        if not (tier.power_w > 0.0 or tier.rate_tok_s > 0.0):
+                            continue
+                        a_var = idx._a_ecl_map.get((j, w_idx, k, l_i))
+                        if a_var is None:
+                            cb.add([(idx.z(j, l_i, t), 1.0)], 0.0, 0.0)
+                        else:
+                            cb.add([(idx.z(j, l_i, t), 1.0), (a_var, -1.0)], -math.inf, 0.0)
+                for a_pos, (l_i, tier, a_var) in enumerate(a_vars):
+                    cb.add([(a_var, 1.0)] + [(idx.z(j, m, t), -1.0) for m in range(l_i, idx.L)], -math.inf, 0.0)
+                    cb.add([(a_var, tier.power_w * ctrl_dt), (d_k, -1.0)], -math.inf, 0.0)
+                    # Mandatory admission: if selected tier >= l_i and dod_start >= P_l * ctrl_dt, some tier >= l_i must run.
+                    mand_terms = [(d_k, 1.0)]
+                    mand_terms.extend((idx.z(j, m, t), budget) for m in range(l_i, idx.L))
+                    mand_terms.extend((a_var2, -budget) for _, _, a_var2 in a_vars[a_pos:])
+                    cb.add(mand_terms, -math.inf, max(0.0, tier.power_w * ctrl_dt - 1e-6) + budget)
+                if k + 1 < len(slots):
+                    d_next = idx._dod_start_map[(j, w_idx, k + 1)]
+                    bal_terms = [(d_next, 1.0), (d_k, -1.0)] + [
+                        (a_var, tier.power_w * dur) for _, tier, a_var in a_vars
+                    ]
+                    cb.add(bal_terms, 0.0, 0.0)
+                else:
+                    end_terms = [(d_k, 1.0)] + [(a_var, -tier.power_w * dur) for _, tier, a_var in a_vars]
+                    cb.add(end_terms, 0.0, math.inf)
 
     def _add_power_thermal_constraints(self, problem: R3Problem, idx: _VarLayout, cb: _ConstraintBuilder) -> None:
         tau = problem.r_th * problem.c_th
@@ -810,8 +848,8 @@ class R3Solver:
             if rate <= 0.0:
                 continue
             terms.append((idx.z(j, l_i, t), -rate * idx.sunlit_s[j][t]))
-            for u_var, dur in idx._u_ecl_by_slot.get((j, t, l_i), ()):
-                terms.append((u_var, -rate * dur))
+            for a_var, dur in idx._a_ecl_by_slot.get((j, t, l_i), ()):
+                terms.append((a_var, -rate * dur))
         cb.add(terms, -math.inf, rhs)
 
     def _add_request_compute_constraints(self, problem: R3Problem, idx: _VarLayout, cb: _ConstraintBuilder) -> None:

@@ -1194,7 +1194,7 @@ def test_r1c_slot_interior_eclipse_exit_and_short_sunlit_reentry(
         (375.0, [[5.0, 60.0]], 5.0, 35, 10.1, False),                 # finite DoD: 300W blocked by period*P > DoD
         (None, [[5.0, 60.0]], 5.0, 45, 10.1, True),                   # unlimited DoD: 300W runs -> 50 tok max (10 tok/s)
         (375.0, [[0.0, 7.0], [10.5, 60.0]], 5.0, 40, 15.1, True),     # cross-window: w0 exhausted, [7,10.5) recovers, w1=375J
-        (375.0, [[0.0, 7.0], [10.5, 60.0]], 5.0, 65, 15.1, False),    # cross-window: 65 > 35 + 25 = 60 tok
+        (375.0, [[0.0, 7.0], [10.5, 60.0]], 5.0, 75, 15.1, False),    # cross-window: 75 > 35 + 30 = 65 tok
     ],
 )
 def test_r1c_dod_modes_and_cross_window_consumed_budget(
@@ -1256,3 +1256,98 @@ def test_r1c_migrate_from_eclipse_to_sunlit_positive() -> None:
     w.submit(r)
     env.run(until=20.0)
     assert r.node == 2 and r.n_mig == 1 and r.t_delivered is not None and r.t_delivered <= 20.0
+
+
+@pytest.mark.parametrize(
+    ("budget_j", "pout", "expect_ontime"),
+    [
+        (1600.0, 68, False),  # R9 repro: 1500 + 375 = 1875 > 1600 -> 2nd slot 75W rejected
+        (1874.0, 68, False),  # just below 1500 + 375 = 1875 threshold
+        (1875.0, 68, True),   # exact 1500 + 375 threshold -> [2, 1] admissible
+        (2000.0, 68, True),   # R9 positive control -> finishes on time
+        (750.0, 60, True),    # 375 + 375 = 750 -> two low-tier slots (65.97 tok >= 60)
+        (750.0, 68, False),   # two low-tier slots insufficient for 68 tok
+    ],
+)
+def test_r1d_finite_dod_repeated_admission_thresholds(
+    budget_j: float, pout: int, expect_ontime: bool
+) -> None:
+    """R1d: finite DoD tracks per-slot consumption without fractional u_ecl under-accounting."""
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "r1d-finite-dod",
+        "horizon_s": 60.0,
+        "nodes": [{"id": 0, "role": "rs"}, {"id": 1, "role": "compute"}],
+        "edges": [{"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 60.0]]}],
+        "dark": [[], [[0.0, 60.0]]],
+    })
+    cfg = _base_cfg()
+    cfg["control_period_s"] = 5.0
+    cfg["power"]["eclipse_dod_budget_j"] = budget_j
+    cfg["gpu"].update(t_fixed_s=0.0, t_weights_s=0.1, t_kv_tok_s=0.0, t_seq_s=0.0)
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, placer=lambda v, r: 1, planner=get_planner("none"), seed=1)
+    req = Request(0, 0, 5.0, False, 1, pout, 1.0, 15.05)
+    world.submit(req)
+    start = 5.05
+    env.run(until=start)
+    problem = ProblemBuilder(horizon_slots=3, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    result = R3Solver().solve(problem)
+    _exec_returned_schedule(world, env, result, start, slots=2)
+    actual_ontime = {r.i for r in world.reqs if r.t_delivered is not None and r.t_delivered <= r.deadline}
+    assert set(result.goodput_req_ids).issubset(actual_ontime)
+    if expect_ontime:
+        assert result.goodput_req_ids == (0,)
+        assert 0 in actual_ontime
+    else:
+        assert result.goodput_req_ids == ()
+
+
+@pytest.mark.parametrize(
+    ("dark_intervals", "budget_j", "pout", "deadline_s", "expect_ontime"),
+    [
+        ([[0.0, 5.0], [8.0, 60.0]], 400.0, 42, 15.05, True),   # 3s*10 (30) + 2s*6.597 (13.19) = 43.19 >= 42
+        ([[0.0, 5.0], [8.0, 60.0]], 400.0, 50, 15.05, False),  # 150J used in [8,10) -> 250J < 375J in slot 1 -> 50 infeasible
+        ([[0.0, 7.0], [10.5, 60.0]], 400.0, 45, 15.05, True),  # w0=400J (1.95s low + 3.5s high), w1=400J resets after sunlit
+    ],
+)
+def test_r1d_mixed_sunlit_eclipse_finite_dod_and_reset(
+    dark_intervals: list[list[float]],
+    budget_j: float,
+    pout: int,
+    deadline_s: float,
+    expect_ontime: bool,
+) -> None:
+    """R1d: mixed sunlit/eclipse slots with finite DoD account fallback consumption and real sunlit reset."""
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "r1d-mixed-dod",
+        "horizon_s": 60.0,
+        "nodes": [{"id": 0, "role": "rs"}, {"id": 1, "role": "compute"}],
+        "edges": [{"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 60.0]]}],
+        "dark": [[], dark_intervals],
+    })
+    cfg = _base_cfg()
+    cfg["control_period_s"] = 5.0
+    cfg["power"]["eclipse_dod_budget_j"] = budget_j
+    cfg["gpu"].update(t_fixed_s=0.0, t_weights_s=0.1, t_kv_tok_s=0.0, t_seq_s=0.0)
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, placer=lambda v, r: 1, planner=get_planner("none"), seed=1)
+    req = Request(0, 0, 5.0, False, 1, pout, 1.0, deadline_s)
+    world.submit(req)
+    start = 5.05
+    env.run(until=start)
+    problem = ProblemBuilder(horizon_slots=3, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    result = R3Solver().solve(problem)
+    _exec_returned_schedule(world, env, result, start, slots=2)
+    actual_ontime = {r.i for r in world.reqs if r.t_delivered is not None and r.t_delivered <= r.deadline}
+    assert set(result.goodput_req_ids).issubset(actual_ontime)
+    if expect_ontime:
+        assert result.goodput_req_ids == (0,)
+        assert 0 in actual_ontime
+    else:
+        assert result.goodput_req_ids == ()
