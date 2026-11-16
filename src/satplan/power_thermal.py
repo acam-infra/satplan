@@ -42,10 +42,25 @@ class PhysicsParams:
     gamma: float
     f_eclipse: float
     eclipse_dod_budget_j: float | None
+    t_fixed_s: float
+    t_weights_s: float
+    t_kv_tok_s: float
+    t_seq_s: float
+    mem_freq_exp: float
 
     @property
     def tau_s(self) -> float:
         return self.r_th * self.c_th
+
+    def iter_time(self, nd: int, ctx: float, f: float) -> float:
+        gpu = {
+            "t_fixed_s": self.t_fixed_s,
+            "t_weights_s": self.t_weights_s,
+            "t_kv_tok_s": self.t_kv_tok_s,
+            "t_seq_s": self.t_seq_s,
+            "mem_freq_exp": self.mem_freq_exp,
+        }
+        return iter_time(nd, ctx, f, gpu)
 
 
 def _parse_tiers(power: dict) -> tuple[bool, tuple[PowerTier, ...]]:
@@ -70,9 +85,10 @@ def _parse_tiers(power: dict) -> tuple[bool, tuple[PowerTier, ...]]:
     return True, indexed
 
 
-def _parse_params(cfg: dict) -> PhysicsParams:
+def parse_physics_params(cfg: dict) -> PhysicsParams:
     power = cfg["power"]
     th = cfg.get("thermal", {})
+    gpu = cfg["gpu"]
     discrete, tiers = _parse_tiers(power)
     dod_raw = power.get("eclipse_dod_budget_j")
     dod = None if dod_raw is None else float(dod_raw)
@@ -91,40 +107,50 @@ def _parse_params(cfg: dict) -> PhysicsParams:
         gamma=float(power["gamma"]),
         f_eclipse=clock_factor(float(power["P_dark"]), power),
         eclipse_dod_budget_j=dod,
+        t_fixed_s=float(gpu["t_fixed_s"]),
+        t_weights_s=float(gpu["t_weights_s"]),
+        t_kv_tok_s=float(gpu["t_kv_tok_s"]),
+        t_seq_s=float(gpu["t_seq_s"]),
+        mem_freq_exp=float(gpu["mem_freq_exp"]),
     )
+
+
+def _sync_dod_budget(dod_rem: float, was_eclipse: bool, is_eclipse: bool, budget: float | None) -> float:
+    if budget is not None and (not is_eclipse or not was_eclipse):
+        return budget
+    return dod_rem
 
 
 class PowerThermalModel:
     """Tracks per-node temperature, Eclipse DoD energy budget, and discrete tier actuation."""
 
-    def __init__(self, cfg: dict, trace: Trace):
+    def __init__(self, params: PhysicsParams, trace: Trace, period: float = 2.0):
         self.trace = trace
-        self.gpu = cfg["gpu"]
-        self.params = _parse_params(cfg)
-        self.period = float(cfg.get("control_period_s", 2.0))
-        p = self.params
-        self.temp_C: list[float] = [p.t0_C] * trace.n
-        self.peak_temp_C: float = p.t0_C
-        dod0 = INF if p.eclipse_dod_budget_j is None else p.eclipse_dod_budget_j
+        self.params = params
+        self.period = float(period)
+        self.temp_C: list[float] = [params.t0_C] * trace.n
+        self.peak_temp_C: float = params.t0_C
+        dod0 = INF if params.eclipse_dod_budget_j is None else params.eclipse_dod_budget_j
         self.dod_remaining_j: dict[int, float] = {j: dod0 for j in trace.compute}
         self._in_eclipse: dict[int, bool] = {j: trace.is_eclipse(j, 0.0) for j in trace.compute}
-        default_tier = len(p.tiers) - 1 if p.discrete else 0
         self.tier_idx: dict[int, int] = {j: 0 for j in trace.compute}
         self.explicit_tier_idx: dict[int, int | None] = {j: None for j in trace.compute}
-        self._default_work_tier = default_tier
+        self._default_work_tier = len(params.tiers) - 1 if params.discrete else 0
         self.zero_power_s: float = 0.0
         self.energy_j: float = 0.0
         self.dod_exhausted_s: float = 0.0
 
-    def _decay(self, dt: float) -> float:
-        tau = self.params.tau_s
-        return math.exp(-dt / tau) if tau > 0.0 else 0.0
+    @classmethod
+    def from_config(cls, cfg: dict, trace: Trace) -> PowerThermalModel:
+        return cls(parse_physics_params(cfg), trace, period=float(cfg.get("control_period_s", 2.0)))
 
     def _next_temp(self, temp: float, power_w: float, dt: float) -> float:
+        tau = self.params.tau_s
+        decay = math.exp(-dt / tau) if tau > 0.0 else 0.0
         t_eq = self.params.t_amb_C + self.params.r_th * power_w
-        return t_eq + (temp - t_eq) * self._decay(dt)
+        return t_eq + (temp - t_eq) * decay
 
-    def _select_discrete_op(
+    def _select_op(
         self,
         temp: float,
         dod_rem: float,
@@ -134,37 +160,30 @@ class PowerThermalModel:
         is_eclipse: bool,
         tier_override: int | None,
     ) -> OperatingPoint:
-        tiers = self.params.tiers
+        p = self.params
+        if not p.discrete:
+            f = p.f_eclipse if is_eclipse else 1.0
+            pwr = p.p_idle if active_batch <= 0 else p.p_idle + (p.p_max - p.p_idle) * (f**p.gamma)
+            return OperatingPoint(0 if active_batch <= 0 else 1, pwr, f)
         if active_batch <= 0 or tier_override == 0:
             return OperatingPoint(0, 0.0, 0.0)
-        if is_eclipse and self.params.eclipse_dod_budget_j is not None and dod_rem <= 1e-9:
+        if is_eclipse and p.eclipse_dod_budget_j is not None and dod_rem <= 1e-9:
             return OperatingPoint(0, 0.0, 0.0)
-        top = self._default_work_tier if tier_override is None else min(max(tier_override, 0), len(tiers) - 1)
+        top = self._default_work_tier if tier_override is None else min(max(tier_override, 0), len(p.tiers) - 1)
         for idx in range(top, 0, -1):
-            tier = tiers[idx]
-            if self._next_temp(temp, tier.power_w, dt) > self.params.t_max_C + 1e-9:
+            tier = p.tiers[idx]
+            if self._next_temp(temp, tier.power_w, dt) > p.t_max_C + 1e-9:
                 continue
-            if is_eclipse and self.params.eclipse_dod_budget_j is not None and tier.power_w * dt > dod_rem + 1e-9:
+            if is_eclipse and p.eclipse_dod_budget_j is not None and tier.power_w * dt > dod_rem + 1e-9:
                 continue
             return OperatingPoint(idx, tier.power_w, tier.clock_f)
         return OperatingPoint(0, 0.0, 0.0)
 
-    def _select_continuous_op(self, active_batch: int, *, is_eclipse: bool) -> OperatingPoint:
-        p = self.params
-        f = p.f_eclipse if is_eclipse else 1.0
-        if active_batch <= 0:
-            return OperatingPoint(0, p.p_idle, f)
-        pwr = p.p_idle + (p.p_max - p.p_idle) * (f**p.gamma)
-        return OperatingPoint(1, pwr, f)
-
     def current_op(self, node: int, active_batch: int, *, is_eclipse: bool, dt: float | None = None) -> OperatingPoint:
-        step = self.period if dt is None else dt
-        if not self.params.discrete:
-            return self._select_continuous_op(active_batch, is_eclipse=is_eclipse)
-        return self._select_discrete_op(
+        return self._select_op(
             self.temp_C[node],
             self.dod_remaining_j[node],
-            step,
+            self.period if dt is None else dt,
             active_batch,
             is_eclipse=is_eclipse,
             tier_override=self.explicit_tier_idx[node],
@@ -179,15 +198,13 @@ class PowerThermalModel:
         return is_eclipse and self.params.eclipse_dod_budget_j is not None and self.dod_remaining_j[node] <= 1e-9
 
     def on_eclipse_change(self, node: int, is_eclipse: bool) -> None:
-        if self.params.eclipse_dod_budget_j is not None and (not is_eclipse or not self._in_eclipse[node]):
-            self.dod_remaining_j[node] = self.params.eclipse_dod_budget_j
+        self.dod_remaining_j[node] = _sync_dod_budget(
+            self.dod_remaining_j[node], self._in_eclipse[node], is_eclipse, self.params.eclipse_dod_budget_j
+        )
         self._in_eclipse[node] = is_eclipse
 
     def step_node(self, node: int, dt: float, active_batch: int, *, is_eclipse: bool) -> OperatingPoint:
-        if self.params.eclipse_dod_budget_j is not None and (not is_eclipse or not self._in_eclipse[node]):
-            self.dod_remaining_j[node] = self.params.eclipse_dod_budget_j
-        self._in_eclipse[node] = is_eclipse
-
+        self.on_eclipse_change(node, is_eclipse)
         op = self.current_op(node, active_batch, is_eclipse=is_eclipse, dt=dt)
         self.tier_idx[node] = op.tier_idx
         self.temp_C[node] = self._next_temp(self.temp_C[node], op.power_w, dt)
@@ -228,18 +245,14 @@ class PowerThermalModel:
         while t < horizon - 1e-9 and rem > 1e-9:
             dt = min(step_base, horizon - t)
             ecl = self.trace.is_eclipse(node, t)
-            if self.params.eclipse_dod_budget_j is not None and (not ecl or (ecl and not prev_ecl)):
-                dod = self.params.eclipse_dod_budget_j
+            dod = _sync_dod_budget(dod, prev_ecl, ecl, self.params.eclipse_dod_budget_j)
             prev_ecl = ecl
-            if self.params.discrete:
-                op = self._select_discrete_op(temp, dod, dt, eval_batch, is_eclipse=ecl, tier_override=tier_override)
-            else:
-                op = self._select_continuous_op(eval_batch, is_eclipse=ecl)
+            op = self._select_op(temp, dod, dt, eval_batch, is_eclipse=ecl, tier_override=tier_override)
             temp = self._next_temp(temp, op.power_w, dt)
             if ecl and self.params.eclipse_dod_budget_j is not None:
                 dod = max(0.0, dod - op.power_w * dt)
             if op.clock_f > 0.0:
-                it = iter_time(eval_batch, context, op.clock_f, self.gpu)
+                it = self.params.iter_time(eval_batch, context, op.clock_f)
                 cap = dt / it
                 if cap >= rem - 1e-9:
                     return t + rem * it, temp

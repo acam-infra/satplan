@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import simpy
-
 from satplan.placers import nearest
 from satplan.planners import NonePlanner
 from satplan.trace import SCHEMA, Trace
@@ -121,6 +120,98 @@ def test_eclipse_dod_exhaustion_suspends_and_sunlit_resumes() -> None:
     assert r.t_delivered is not None
 
 
+def test_eclipse_dod_exact_budget_no_overshoot() -> None:
+    # Eclipse window [0, 50]; DoD budget = 600 J (exactly 2.0s at 300W).
+    tr = _two_compute_trace(eclipse=[[0.0, 50.0]])
+    cfg = _actuation_cfg(t0=25.0, dod_j=600.0)
+    env = simpy.Environment()
+    w = CoWorld(env, tr, cfg, placer=nearest, planner=NonePlanner(), seed=1)
+    r = Request(i=0, origin=0, t=0.0, long=False, pin=100, pout=20000, upload_bytes=1e4, deadline=200.0)
+    w.submit(r)
+
+    env.run(until=2.01)
+    gen_at_exhaust = r.gen
+    energy_at_exhaust = w.pt.energy_j
+    assert energy_at_exhaust <= 600.0 + 1e-6
+
+    # Must NOT decode for an extra control period after t=2.0 exhaustion.
+    env.run(until=10.0)
+    assert r.gen == gen_at_exhaust
+    assert w.pt.energy_j == energy_at_exhaust
+
+
+def test_sunlit_to_eclipse_boundary_zero_dod_leakage() -> None:
+    # Sunlit [0, 10), Eclipse [10, 50]; control_period_s = 2.0 aligns with t=10.0.
+    tr = _two_compute_trace(eclipse=[[10.0, 50.0]])
+    cfg = _actuation_cfg(t0=25.0, dod_j=600.0)
+    env = simpy.Environment()
+    w = CoWorld(env, tr, cfg, placer=nearest, planner=NonePlanner(), seed=1)
+    r = Request(i=0, origin=0, t=0.0, long=False, pin=100, pout=50000, upload_bytes=1e4, deadline=200.0)
+    w.submit(r)
+
+    # Just after entering eclipse at t=10.001, [8, 10] sunlit energy must NOT leak into eclipse DoD.
+    env.run(until=10.001)
+    assert w.pt.dod_remaining_j[1] >= 600.0 - 1e-6
+
+
+def test_migration_unreachable_path_does_not_lock_or_leak() -> None:
+    # Edge 1->2 is down during [0, 50].
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "mig-down",
+        "horizon_s": 200.0,
+        "nodes": [
+            {"id": 0, "name": "RS-0", "role": "rs"},
+            {"id": 1, "name": "C-1", "role": "compute"},
+            {"id": 2, "name": "C-2", "role": "compute"},
+        ],
+        "edges": [
+            {"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 200.0]]},
+            {"u": 1, "v": 2, "kind": "intra", "up": [[50.0, 200.0]]},
+        ],
+        "dark": [[], [], []],
+    })
+    cfg = _actuation_cfg(t0=25.0, kv_gib=1.0)
+    env = simpy.Environment()
+    w = CoWorld(env, tr, cfg, placer=nearest, planner=NonePlanner(), seed=1)
+    r = Request(i=0, origin=0, t=0.0, long=False, pin=100, pout=1000, upload_bytes=1e4, deadline=200.0)
+    w.submit(r)
+
+    env.run(until=0.5)
+    w.apply_plan(PlanAction(migrations=(MigrationOrder(req_id=0, dst=2, nbytes=None),)))
+    assert w.kv_used(2) == 0.0
+    assert r.mig_dst is None
+
+    # Request continues decoding on node 1 and completes normally.
+    env.run(until=200.0)
+    assert r.state == "done"
+    assert r.node == 1
+    assert w.kv_used(2) == 0.0
+
+
+def test_migration_source_completes_mid_flight_releases_dst_kv() -> None:
+    tr = _two_compute_trace()
+    cfg = _actuation_cfg(t0=25.0, kv_gib=1.0)
+    cfg["net"]["hop_latency_s"] = 0.5
+    env = simpy.Environment()
+    w = CoWorld(env, tr, cfg, placer=nearest, planner=NonePlanner(), seed=1)
+    r = Request(i=0, origin=0, t=0.0, long=False, pin=500, pout=500, upload_bytes=1e4, deadline=200.0)
+    w.submit(r)
+
+    env.run(until=0.6)
+    assert r.state == "decode"
+    # Start migration, then simulate source finishing/delivering before migration finishes.
+    w.apply_plan(PlanAction(migrations=(MigrationOrder(req_id=0, dst=2, nbytes=None),)))
+    assert w.kv_used(2) > 0.0
+    r.gen = float(r.pout)
+    r.decode_done.succeed()
+
+    env.run(until=200.0)
+    assert r.state == "done"
+    assert w.kv_used(1) == 0.0
+    assert w.kv_used(2) == 0.0
+
+
 def test_cumulative_unlock_multi_slot_migration_and_kv_accounting() -> None:
     tr = _two_compute_trace()
     # Link intra = 0.008 Gbps = 1 MB/s = 1e6 B/s.
@@ -131,7 +222,7 @@ def test_cumulative_unlock_multi_slot_migration_and_kv_accounting() -> None:
     r = Request(i=0, origin=0, t=0.0, long=False, pin=500, pout=500, upload_bytes=1e4, deadline=200.0)
     w.submit(r)
 
-    env.run(until=0.5)
+    env.run(until=0.6)
     assert r.state == "decode"
     assert r.node == 1
     need = r.reserved_tokens * w.bpt
