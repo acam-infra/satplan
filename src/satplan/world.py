@@ -36,16 +36,14 @@ class Request:
     state: str = "wait"  # wait | upload | decode | deliver | done
     gen: float = 0.0
     t_admit: float | None = None
-    t_first: float | None = None
     t_decoded: float | None = None
     t_delivered: float | None = None
     stall_s: float = 0.0
-    eclipse_tok: float = 0.0
     upload_fail: int = 0
     proc: object = None
     trail: list[int] = field(default_factory=list)
     output_budget: int | None = None
-    decode_step: tuple[float, float] | None = None
+    decoding: bool = False
 
     @property
     def reserved_tokens(self) -> int:
@@ -90,6 +88,7 @@ class CoWorld:
         self.period = float(cfg["control_period_s"])
         self.stream = cfg["delivery"] == "stream"
         self.nodes: dict[int, list[Request]] = {j: [] for j in trace.compute}
+        self._node_reserved_tokens: dict[int, int] = {j: 0 for j in trace.compute}
         self.reserved = {j: 0.0 for j in trace.compute}
         self.reqs: list[Request] = []
         self.topo_event = env.event()
@@ -109,12 +108,28 @@ class CoWorld:
     def node_load(self, j: int) -> int:
         return len(self.nodes[j])
 
+    def net_edge_rates(self) -> list[tuple[int, float]]:
+        self.net.advance(self.env.now)
+        return sorted(self.net.edge_rates().items())
+
+    @property
+    def upload_fail_count(self) -> int:
+        return self.acc["upload_fail"]
+
+    @property
+    def link_bytes_hops(self) -> float:
+        return self.net.bytes_hops
+
+    @property
+    def arrival_window_s(self) -> float:
+        return float(self.cfg["workload"]["arrival_window_s"])
+
     def f_of(self, j: int, t: float | None = None) -> float:
         now = self.env.now if t is None else t
         return self.f_eclipse if self.trace.is_eclipse(j, now) else 1.0
 
     def kv_used(self, j: int) -> float:
-        return sum(r.reserved_tokens for r in self.nodes[j]) * self.bpt + self.reserved[j]
+        return self._node_reserved_tokens[j] * self.bpt + self.reserved[j]
 
     def fits(self, j: int, r: Request) -> bool:
         return self.kv_used(j) + r.reserved_tokens * self.bpt <= self.kv_cap
@@ -127,9 +142,17 @@ class CoWorld:
 
     def poke(self, j: int) -> None:
         for r in list(self.nodes[j]):
-            if r.state == "decode" and r.decode_step is not None and r.proc is not None and r.proc.is_alive:
+            if r.state == "decode" and r.decoding and r.proc is not None and r.proc.is_alive:
                 with contextlib.suppress(RuntimeError):
                     r.proc.interrupt()
+
+    def _attach_node(self, j: int, r: Request) -> None:
+        self.nodes[j].append(r)
+        self._node_reserved_tokens[j] += r.reserved_tokens
+
+    def _detach_node(self, j: int, r: Request) -> None:
+        self.nodes[j].remove(r)
+        self._node_reserved_tokens[j] -= r.reserved_tokens
 
     def log(self, kind: str, **kw) -> None:
         if self.rec is not None:
@@ -149,14 +172,19 @@ class CoWorld:
                 self.peak_temp_C = self.temp_C[j]
 
     def _changes(self):
+        prev_eclipse = {j: self.trace.is_eclipse(j, 0.0) for j in self.trace.compute}
         for t in self.trace.change_times():
             if t > self.env.now:
                 yield self.env.timeout(t - self.env.now)
             now = self.env.now
-            for f in self.net.abort_dead(lambda e: self.trace.edge_up(e, now)):
-                self.log("cut", tag=f.tag, req=f.meta.get("req"))
+            if self.net.flows:
+                for f in self.net.abort_dead(lambda e: self.trace.edge_up(e, now)):
+                    self.log("cut", tag=f.tag, req=f.meta.get("req"))
             for j in self.trace.compute:
-                self.poke(j)
+                ecl = self.trace.is_eclipse(j, now)
+                if ecl != prev_eclipse[j]:
+                    prev_eclipse[j] = ecl
+                    self.poke(j)
             ev, self.topo_event = self.topo_event, self.env.event()
             ev.succeed()
 
@@ -179,7 +207,7 @@ class CoWorld:
         r.trail.append(j)
         r.t_admit = self.env.now
         r.state = "decode"
-        self.nodes[j].append(r)
+        self._attach_node(j, r)
         self.poke(j)
         self.log("admit", req=r.i, node=j)
         yield from self._decode_loop(r)
@@ -214,29 +242,24 @@ class CoWorld:
     def _decode_loop(self, r: Request):
         while r.remaining > 1e-9:
             j = r.node
-            eclipse = self.trace.is_eclipse(j, self.env.now)
             it = self.iter_of(j)
             step = min(CHUNK_S, it * r.remaining)
             t0, g0 = self.env.now, r.gen
-            r.decode_step = (t0, it)
+            r.decoding = True
             with contextlib.suppress(simpy.Interrupt):
                 yield self.env.timeout(max(step, 1e-9))
-            r.decode_step = None
+            r.decoding = False
             dt = self.env.now - t0
             got = min(r.remaining, dt / it) if it > 0 else 0.0
             r.gen = g0 + got
-            if eclipse:
-                r.eclipse_tok += got
             if self.stream and dt > 0:
                 r.stall_s += self.trace.disconnected_time(r.origin, j, t0, self.env.now)
-            if r.t_first is None and r.gen >= 1:
-                r.t_first = self.env.now
 
     def _deliver(self, r: Request):
         r.state = "deliver"
         r.t_decoded = self.env.now
         j = r.node
-        self.nodes[j].remove(r)
+        self._detach_node(j, r)
         self.poke(j)
         t_conn = self.trace.next_conn(r.origin, j, self.env.now)
         if t_conn == INF:

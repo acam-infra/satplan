@@ -40,23 +40,24 @@ thermal:
 net:
   link_gbps:
     intra: 10.0
-    inter: 10.0
+    inter: 1.5
     rs: 5.0
   hop_latency_s: 0.005
 
 workload:
-  arrival_window_s: 5400
-  rate_per_rs_per_min: 45
+  arrival_window_s: 3600
+  source_rates_per_min: [48.0, 6.0, 6.0]
+  rate_per_rs_per_min: 20
   p_long: 0.35
-  long_out: [6000, 18000]
+  long_out: [18000, 36000]
   short_out: [200, 1200]
-  long_pin: 2000
+  long_pin: 4000
   short_pin: 500
   long_upload_MB: 500
   short_upload_MB: 50
 
 slo:
-  deadline_factor_long: 2.0
+  deadline_factor_long: 1.6
   deadline_factor_short: 4.0
   min_deadline_s: 120
   max_stall_frac: 0.1

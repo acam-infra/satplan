@@ -39,10 +39,9 @@ class Recorder:
             load = [0] * n
             kv = [0.0] * n
             for j in w.trace.compute:
-                load[j] = len(w.nodes[j])
+                load[j] = w.node_load(j)
                 kv[j] = round(min(1.0, w.kv_used(j) / w.kv_cap), 3)
-            w.net.advance(w.env.now)
-            rates = sorted(w.net.edge_rates().items())
+            rates = w.net_edge_rates()
             self.frames.append({
                 "t": round(w.env.now, 1),
                 "load": load,
@@ -67,7 +66,7 @@ def summarize(w: CoWorld) -> dict[str, Any]:
     delivered = [r for r in rs if r.t_delivered is not None]
     good = [r for r in rs if w.good(r)]
     bad = [r for r in rs if not w.good(r)]
-    window = float(w.cfg["workload"]["arrival_window_s"])
+    window = w.arrival_window_s
     goodput_gen = sum(r.gen for r in good)
     badput_gen = sum(r.gen for r in bad)
     horizon = w.trace.horizon
@@ -88,8 +87,8 @@ def summarize(w: CoWorld) -> dict[str, Any]:
         "e2e_p95_all_s": _pct(lat_all, 95),
         "long_p95_all_s": _pct(lat_long_all, 95),
         "peak_temp_C": w.peak_temp_C,
-        "upload_fail": w.acc["upload_fail"],
-        "link_GB_hops": w.net.bytes_hops / 1e9,
+        "upload_fail": w.upload_fail_count,
+        "link_GB_hops": w.link_bytes_hops / 1e9,
     }
 
 
@@ -105,38 +104,56 @@ def cumulative_good(w: CoWorld, step: float) -> list[list[float]]:
 
 
 def request_table(w: CoWorld) -> list[list]:
-    def r2(x: float | None) -> float | None:
+    def r1(x: float | None) -> float | None:
         return None if x is None else round(x, 1)
 
     return [
-        [r.i, r.origin, int(r.long), r2(r.t), r2(r.t_admit), r2(r.t_decoded), r2(r.t_delivered), int(w.good(r)), r.trail]
+        [r.i, r.origin, int(r.long), r1(r.t), r1(r.t_admit), r1(r.t_decoded), r1(r.t_delivered), int(w.good(r)), r.trail]
         for r in w.reqs
     ]
 
 
+def _resolve_path(cfg: dict, key: str) -> Path | None:
+    if "_dir" not in cfg or key not in cfg:
+        return None
+    p = (Path(cfg["_dir"]) / cfg[key]).resolve()
+    return p if p.is_file() else None
+
+
 def _trace_payload(cfg: dict, trace: Trace) -> dict:
-    if "_dir" in cfg and "trace" in cfg:
-        raw = json.loads((Path(cfg["_dir"]) / cfg["trace"]).resolve().read_text(encoding="utf-8"))
+    tp = _resolve_path(cfg, "trace")
+    if tp is not None:
+        raw = json.loads(tp.read_text(encoding="utf-8"))
         return {k: raw[k] for k in ("nodes", "edges", "dark", "horizon_s", "stats") if k in raw}
     edges = [{"u": u, "v": v, "kind": k, "up": up} for (u, v), k, up in zip(trace.edges, trace.kind, trace.up, strict=True)]
     return {"nodes": trace.nodes, "edges": edges, "dark": trace.eclipse, "horizon_s": trace.horizon, "stats": {}}
 
 
 def _provenance(cfg: dict, seed: int) -> dict:
+    import subprocess
+
     clean = {k: v for k, v in cfg.items() if not k.startswith("_")}
     prov: dict[str, Any] = {
         "config_sha256": hashlib.sha256(json.dumps(clean, sort_keys=True, default=str).encode()).hexdigest(),
         "seeds": cfg.get("seeds", [seed]),
         "record_seed": seed,
     }
-    if "_dir" in cfg and "trace" in cfg:
-        tp = (Path(cfg["_dir"]) / cfg["trace"]).resolve()
-        if tp.is_file():
-            prov["trace_sha256"] = hashlib.sha256(tp.read_bytes()).hexdigest()
-    if "_dir" in cfg and "scenario" in cfg:
-        sp = (Path(cfg["_dir"]) / cfg["scenario"]).resolve()
-        if sp.is_file():
-            prov["scenario_sha256"] = hashlib.sha256(sp.read_bytes()).hexdigest()
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--short=12", "HEAD"],
+            cwd=Path(__file__).resolve().parents[2],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            prov["satplan_commit"] = out.stdout.strip()
+    except OSError:
+        pass
+    for key, field in (("trace", "trace_sha256"), ("scenario", "scenario_sha256")):
+        resolved = _resolve_path(cfg, key)
+        if resolved is not None:
+            prov[field] = hashlib.sha256(resolved.read_bytes()).hexdigest()
     return prov
 
 
@@ -148,11 +165,15 @@ def write_playback(
     viz_dir: Path,
     seed: int = 1,
 ) -> Path:
-    scenario = {}
-    if "_dir" in cfg and "scenario" in cfg:
-        sp = (Path(cfg["_dir"]) / cfg["scenario"]).resolve()
-        if sp.is_file():
-            scenario = json.loads(sp.read_text(encoding="utf-8"))
+    sp = _resolve_path(cfg, "scenario")
+    if sp is not None:
+        scenario = json.loads(sp.read_text(encoding="utf-8"))
+    else:
+        scenario = {
+            "name": trace.name,
+            "epoch_iso": "2026-01-01T00:00:00Z",
+            "satellites": [{"name": n["name"], "role": n["role"]} for n in trace.nodes],
+        }
     runs = {
         policy_name: {
             "summary": result.metrics,

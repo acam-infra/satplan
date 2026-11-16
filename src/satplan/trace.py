@@ -58,6 +58,7 @@ class Trace:
         self._path_cache: dict[tuple[int, int, int, bool], tuple[list[int], list[int]] | None] = {}
         self._hop_cache: dict[tuple[int, int, int, bool], int | None] = {}
         self._kpaths_cache: dict[tuple[int, int, int, int, bool], list[tuple[list[int], list[int]]]] = {}
+        self._hops_sorted_cache: dict[tuple[int, int], tuple[tuple[int, int], ...]] = {}
         self._build_epochs()
         self._build_conn()
 
@@ -142,6 +143,32 @@ class Trace:
         if key not in self._hop_cache:
             self.path(s, d, t, via_rs=via_rs)
         return self._hop_cache[key]
+
+    def compute_by_hops(self, origin: int, t: float) -> tuple[tuple[int, int], ...]:
+        """Return ``((hops, compute_node), ...)`` sorted by fewest hops then node id for ``origin`` at ``t``."""
+        ep = self.epoch_index(t)
+        key = (ep, origin)
+        cached = self._hops_sorted_cache.get(key)
+        if cached is not None:
+            return cached
+        adj = self.adjacency(t)
+        dists = [-1] * self.n
+        dists[origin] = 0
+        q = [origin]
+        i = 0
+        while i < len(q):
+            u = q[i]
+            i += 1
+            if u != origin and self.role[u] == "rs":
+                continue
+            du = dists[u] + 1
+            for v, _ in adj[u]:
+                if dists[v] == -1:
+                    dists[v] = du
+                    q.append(v)
+        out = tuple(sorted((dists[j], j) for j in self.compute if dists[j] >= 0))
+        self._hops_sorted_cache[key] = out
+        return out
 
     def k_shortest_paths(
         self, s: int, d: int, t: float, k: int = 3, *, via_rs: bool = False

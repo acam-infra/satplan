@@ -92,6 +92,8 @@ def test_run_simulation_end_to_end_and_playback(tmp_path: Path) -> None:
     pb_path = write_playback(cfg, tr, res, "nearest+none", tmp_path, seed=1)
     pb = json.loads(pb_path.read_text(encoding="utf-8"))
     assert pb["schema"] == "satsim.cosim_playback/v1"
+    assert pb["scenario"]["epoch_iso"]
+    assert len(pb["scenario"]["satellites"]) == tr.n
     assert "nearest+none" in pb["runs"]
     assert len(pb["runs"]["nearest+none"]["frames"]) > 0
     assert (tmp_path / "index.json").is_file()

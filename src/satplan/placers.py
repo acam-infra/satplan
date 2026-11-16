@@ -12,16 +12,17 @@ def nearest(world: CoWorld, req: Request) -> int | None:
     """Pick the reachable compute satellite with KV room and fewest hops from origin."""
     now = world.env.now
     best_j: int | None = None
-    best_key: tuple[int, int, int] | None = None
-    for j in world.trace.compute:
+    best_hops = 1 << 30
+    best_load = 1 << 30
+    for hops, j in world.trace.compute_by_hops(req.origin, now):
+        if hops > best_hops:
+            break
         if not world.fits(j, req):
             continue
-        hops = world.trace.hop_count(req.origin, j, now)
-        if hops is None:
-            continue
-        key = (hops, world.node_load(j), j)
-        if best_key is None or key < best_key:
-            best_key = key
+        load = world.node_load(j)
+        if hops < best_hops or load < best_load:
+            best_hops = hops
+            best_load = load
             best_j = j
     return best_j
 
