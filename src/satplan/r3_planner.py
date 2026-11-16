@@ -49,6 +49,37 @@ def _req_kv_ub(params: PhysicsParams, r: Request, window_s: float) -> float:
     return min(float(r.pin + r.pout), float(r.kv) + min(float(r.remaining), max_rate * window_s))
 
 
+def effective_actuation_dt(control_period_s: float, interval_s: float) -> float:
+    """Smallest CompositePolicy actuation cadence >= interval_s on control_period_s ticks."""
+    if not math.isfinite(control_period_s) or control_period_s <= 0.0:
+        raise ValueError(f"control_period_s must be positive, got {control_period_s}")
+    if not math.isfinite(interval_s) or interval_s <= 0.0:
+        raise ValueError(f"interval_s must be positive, got {interval_s}")
+    return max(1, math.ceil((interval_s - 1e-9) / control_period_s)) * control_period_s
+
+
+def _validate_planning_dt(dt_s: float, control_period_s: float, interval_s: float) -> str | None:
+    if not math.isfinite(dt_s) or dt_s <= 0.0:
+        return f"unaligned_planning_dt: non_positive dt_s={dt_s}"
+    if not math.isfinite(control_period_s) or control_period_s <= 0.0:
+        return f"unaligned_planning_dt: non_positive control_period_s={control_period_s}"
+    if not math.isfinite(interval_s) or interval_s <= 0.0:
+        return f"unaligned_planning_dt: non_positive interval_s={interval_s}"
+    eff_dt = effective_actuation_dt(control_period_s, interval_s)
+    if dt_s < eff_dt - 1e-9:
+        return (
+            f"unaligned_planning_dt: dt_s={dt_s} < effective_actuation_dt={eff_dt} "
+            f"(control_period_s={control_period_s}, interval_s={interval_s})"
+        )
+    mult = round(dt_s / eff_dt)
+    if mult < 1 or abs(dt_s - mult * eff_dt) > 1e-6 * max(1.0, dt_s):
+        return (
+            f"unaligned_planning_dt: dt_s={dt_s} is not an integer multiple of "
+            f"effective_actuation_dt={eff_dt} (control_period_s={control_period_s}, interval_s={interval_s})"
+        )
+    return None
+
+
 class ProblemBuilder:
     """Maps a ForecastView snapshot and PhysicsParams into a pure-data R3Problem."""
 
@@ -64,6 +95,8 @@ class ProblemBuilder:
     ) -> None:
         if horizon_slots <= 0:
             raise ValueError("horizon_slots must be positive")
+        if dt_s is not None and (not math.isfinite(dt_s) or dt_s <= 0.0):
+            raise ValueError("dt_s must be positive")
         self.horizon_slots = horizon_slots
         self.dt_s = dt_s
         self.cvar_alpha = cvar_alpha
@@ -76,8 +109,10 @@ class ProblemBuilder:
         if self.dt_s is not None:
             dt_s = float(self.dt_s)
         elif ctrl_dt < view.horizon_s - 1e-9:
-            dt_s = math.ceil((invariants.interval_s - 1e-9) / ctrl_dt) * ctrl_dt
+            dt_s = effective_actuation_dt(ctrl_dt, invariants.interval_s)
         else:
+            # Isolated pure-model callers (e.g. control_period_s >= horizon_s) still get interval_s;
+            # R3RuntimePlanner.plan() unconditionally enforces _validate_planning_dt at the runtime boundary.
             dt_s = float(invariants.interval_s)
         rem_horizon = max(dt_s, view.horizon_s - view.now)
         horizon_slots = max(1, min(self.horizon_slots, int(math.ceil(rem_horizon / dt_s))))
@@ -434,9 +469,43 @@ class R3RuntimePlanner:
 
     def plan(self, view: ForecastView, invariants: RebalanceInvariants) -> PlanAction:
         problem = self.builder.build(view, invariants)
+        req_map = {r.i: r for j in view.compute_nodes for r in view.node_requests(j)}
+        dt_err = _validate_planning_dt(problem.dt_s, view.control_period_s, invariants.interval_s)
+        if dt_err is not None:
+            action = _safe_fallback_action(view, invariants, req_map)
+            result = R3Result(
+                action=action,
+                status="error",
+                stage1_obj=0.0,
+                goodput_weight=0.0,
+                cvar_s=0.0,
+                migration_bytes=0.0,
+                node_tiers={},
+                node_temps_C={},
+                goodput_req_ids=(),
+                fallback_reason=dt_err,
+                stage1_status="not_run",
+                stage2_status="not_run",
+            )
+            self.last_result = result
+            self.last_diag = {
+                "now_s": view.now,
+                "status": result.status,
+                "wall_time_s": 0.0,
+                "mip_gap": None,
+                "fallback_reason": dt_err,
+                "stage1_status": result.stage1_status,
+                "stage1_wall_time_s": 0.0,
+                "stage1_mip_gap": None,
+                "stage2_status": result.stage2_status,
+                "stage2_wall_time_s": 0.0,
+                "stage2_mip_gap": None,
+                "n_migrations": len(action.migrations),
+            }
+            return action
+
         result = self.solver.solve(problem)
         self.last_result = result
-        req_map = {r.i: r for j in view.compute_nodes for r in view.node_requests(j)}
 
         fallback_reason = result.fallback_reason
         if result.status in ("timeout_no_incumbent", "proven_infeasible", "error"):
