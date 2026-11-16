@@ -1472,3 +1472,101 @@ def test_r1e_migrate_from_thermally_constrained_node_positive() -> None:
     w.submit(r)
     env.run(until=25.0)
     assert r.node == 2 and r.n_mig == 1 and r.t_delivered is not None and r.t_delivered <= 25.0
+
+
+@pytest.mark.parametrize(
+    ("control_period_s", "budget_j", "start_s", "pout", "expect_ontime"),
+    [
+        (2.0, 1500.0, 2.05, 50, False),  # R11 repro: ctrl_dt=2 < dt=5, 300*(2+5)=2100 > 1500 -> []
+        (2.0, 2099.0, 2.05, 50, False),  # just below 2100 J threshold
+        (2.0, 2100.0, 2.05, 50, True),   # R11 positive control: exact 2100 J -> [0]
+        (2.0, 1500.0, 2.55, 50, False),  # different tick phase -> still []
+        (2.0, 1500.0, 2.05, 30, True),   # low tier 75W (525 <= 1500) delivers 32.99 >= 30 -> [0]
+        (1.7, 1500.0, 2.05, 50, False),  # non-integer ratio 5/1.7: 300*(1.7+5)=2010 > 1500 -> []
+        (1.7, 2100.0, 2.05, 50, True),   # non-integer ratio 5/1.7: >= 4*510=2040 -> [0]
+        (5.0, 1500.0, 5.001, 49, True),  # ctrl_dt == dt: 300*5=1500 <= 1500 -> finishes before t=10 tick -> [0]
+        (7.0, 2100.0, 7.001, 50, True),  # ctrl_dt > dt (aligned): 300*7=2100 <= 2100 -> [0]
+        (7.0, 1500.0, 2.05, 50, False),  # ctrl_dt > dt: 300*7=2100 > 1500 -> []
+    ],
+)
+def test_r1f_multi_tick_per_slot_dod_admission_and_phases(
+    control_period_s: float, budget_j: float, start_s: float, pout: int, expect_ontime: bool
+) -> None:
+    """R1f: multiple control ticks inside a planning slot require DoD >= P*(ctrl_dt + dur)."""
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "r1f-multi-tick",
+        "horizon_s": 60.0,
+        "nodes": [{"id": 0, "role": "rs"}, {"id": 1, "role": "compute"}],
+        "edges": [{"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 60.0]]}],
+        "dark": [[], [[0.0, 60.0]]],
+    })
+    cfg = _base_cfg()
+    cfg["control_period_s"] = control_period_s
+    cfg["power"]["eclipse_dod_budget_j"] = budget_j
+    cfg["gpu"].update(t_fixed_s=0.0, t_weights_s=0.1, t_kv_tok_s=0.0, t_seq_s=0.0)
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, placer=lambda v, r: 1, planner=get_planner("none"), seed=1)
+    arr_t = 2.0 if start_s < 5.0 else start_s - 0.001
+    req = Request(0, 0, arr_t, False, 1, pout, 1.0, arr_t + 5.05)
+    world.submit(req)
+    env.run(until=start_s)
+    problem = ProblemBuilder(horizon_slots=3, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    result = R3Solver().solve(problem)
+    _exec_returned_schedule(world, env, result, start_s, slots=1)
+    actual_ontime = {r.i for r in world.reqs if r.t_delivered is not None and r.t_delivered <= r.deadline}
+    assert set(result.goodput_req_ids).issubset(actual_ontime)
+    if expect_ontime:
+        assert result.goodput_req_ids == (0,)
+        assert 0 in actual_ontime
+    else:
+        assert result.goodput_req_ids == ()
+
+
+@pytest.mark.parametrize(
+    ("control_period_s", "budget_j", "dark_intervals", "pout", "deadline_s", "expect_ontime"),
+    [
+        (2.0, None, [[0.0, 60.0]], 50, 7.05, True),                        # unlimited DoD under ctrl_dt < dt
+        (2.0, 1500.0, [[0.0, 4.5], [10.0, 60.0]], 40, 7.05, True),         # exit at 4.5s: dur=2.45 -> 300*(2+2.45)=1335<=1500
+        (2.0, 0.0, [[0.0, 4.5], [10.0, 60.0]], 35, 12.05, True),           # DoD=0 waits for exit at 4.5s and finishes in slot 1
+    ],
+)
+def test_r1f_multi_tick_intraslot_exit_and_unlimited_dod(
+    control_period_s: float,
+    budget_j: float | None,
+    dark_intervals: list[list[float]],
+    pout: int,
+    deadline_s: float,
+    expect_ontime: bool,
+) -> None:
+    """R1f positive: unlimited DoD, intra-slot eclipse exit, and waiting for sunlit under ctrl_dt < dt."""
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "r1f-exit-unlimited",
+        "horizon_s": 60.0,
+        "nodes": [{"id": 0, "role": "rs"}, {"id": 1, "role": "compute"}],
+        "edges": [{"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 60.0]]}],
+        "dark": [[], dark_intervals],
+    })
+    cfg = _base_cfg()
+    cfg["control_period_s"] = control_period_s
+    cfg["power"]["eclipse_dod_budget_j"] = budget_j
+    cfg["gpu"].update(t_fixed_s=0.0, t_weights_s=0.1, t_kv_tok_s=0.0, t_seq_s=0.0)
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, placer=lambda v, r: 1, planner=get_planner("none"), seed=1)
+    req = Request(0, 0, 2.0, False, 1, pout, 1.0, deadline_s)
+    world.submit(req)
+    start_s = 2.05
+    env.run(until=start_s)
+    problem = ProblemBuilder(horizon_slots=3, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    result = R3Solver().solve(problem)
+    _exec_returned_schedule(world, env, result, start_s, slots=2)
+    actual_ontime = {r.i for r in world.reqs if r.t_delivered is not None and r.t_delivered <= r.deadline}
+    assert set(result.goodput_req_ids).issubset(actual_ontime)
+    if expect_ontime:
+        assert result.goodput_req_ids == (0,)
+        assert 0 in actual_ontime

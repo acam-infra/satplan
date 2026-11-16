@@ -200,7 +200,8 @@ class _VarLayout:
                     for l_i, tier in enumerate(problem.tiers):
                         if not (tier.power_w > 0.0 or tier.rate_tok_s > 0.0):
                             continue
-                        if tier.power_w * ctrl_dt > budget + 1e-9:
+                        extra_dur = dur if ctrl_dt < problem.dt_s - 1e-9 else 0.0
+                        if tier.power_w * (ctrl_dt + extra_dur) > budget + 1e-9:
                             continue
                         key = (j, w_idx, k, l_i)
                         self._a_ecl_map[key] = off
@@ -775,7 +776,7 @@ class R3Solver:
                 ]
                 if a_vars:
                     cb.add([(a_var, 1.0) for _, _, a_var in a_vars], -math.inf, 1.0)
-                if idx.sunlit_s[j][t] <= 1e-12:
+                if idx.sunlit_s[j][t] <= 1e-12 or ctrl_dt < problem.dt_s - 1e-9:
                     for l_i, tier in enumerate(problem.tiers):
                         if not (tier.power_w > 0.0 or tier.rate_tok_s > 0.0):
                             continue
@@ -784,14 +785,16 @@ class R3Solver:
                             cb.add([(idx.z(j, l_i, t), 1.0)], 0.0, 0.0)
                         else:
                             cb.add([(idx.z(j, l_i, t), 1.0), (a_var, -1.0)], -math.inf, 0.0)
+                extra_dur = dur if ctrl_dt < problem.dt_s - 1e-9 else 0.0
                 for a_pos, (l_i, tier, a_var) in enumerate(a_vars):
+                    req_dod = tier.power_w * (ctrl_dt + extra_dur)
                     cb.add([(a_var, 1.0)] + [(idx.z(j, m, t), -1.0) for m in range(l_i, idx.L)], -math.inf, 0.0)
-                    cb.add([(a_var, tier.power_w * ctrl_dt), (d_k, -1.0)], -math.inf, 0.0)
-                    # Mandatory admission: if selected tier >= l_i and dod_start >= P_l * ctrl_dt, some tier >= l_i must run.
+                    cb.add([(a_var, req_dod), (d_k, -1.0)], -math.inf, 0.0)
+                    # Mandatory admission: if selected tier >= l_i and dod_start >= req_dod, some tier >= l_i must run.
                     mand_terms = [(d_k, 1.0)]
                     mand_terms.extend((idx.z(j, m, t), budget) for m in range(l_i, idx.L))
                     mand_terms.extend((a_var2, -budget) for _, _, a_var2 in a_vars[a_pos:])
-                    cb.add(mand_terms, -math.inf, max(0.0, tier.power_w * ctrl_dt - 1e-6) + budget)
+                    cb.add(mand_terms, -math.inf, max(0.0, req_dod - 1e-6) + budget)
                 if k + 1 < len(slots):
                     d_next = idx._dod_start_map[(j, w_idx, k + 1)]
                     bal_terms = [(d_next, 1.0), (d_k, -1.0)] + [
