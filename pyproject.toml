@@ -1,0 +1,22 @@
+[project]
+name = "satplan"
+version = "0.1.0"
+description = "Clean r3 time-expanded runtime reallocation engine and 3x3 cross-matrix."
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.1",
+    "pyyaml>=6.0.3",
+    "simpy>=4.1.2",
+]
+
+[project.scripts]
+satplan = "satplan.runner:main"
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
