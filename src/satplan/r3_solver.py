@@ -21,6 +21,12 @@ class R3TierSpec:
 
 
 @dataclass(frozen=True)
+class R3EclipseWindowSpec:
+    budget_j: float | None
+    slot_durations_s: tuple[tuple[int, float], ...]
+
+
+@dataclass(frozen=True)
 class R3NodeSpec:
     node_id: int
     init_temp_C: float
@@ -28,6 +34,8 @@ class R3NodeSpec:
     is_eclipse: tuple[bool, ...]
     init_dod_remaining_j: float | None = None
     tier_rates_tok_s: tuple[float, ...] | None = None
+    sunlit_s: tuple[float, ...] | None = None
+    eclipse_windows: tuple[R3EclipseWindowSpec, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -70,6 +78,7 @@ class R3Problem:
     r_th: float = 0.2
     c_th: float = 150.0
     eclipse_dod_budget_j: float | None = None
+    control_period_s: float | None = None
     max_inflight: int | None = None
     max_mig_per_req: int | None = None
     hop_latency_s: float = 0.0
@@ -159,6 +168,33 @@ class _VarLayout:
         for name, count in sizes:
             setattr(self, name, off)
             off += count
+        self.sunlit_s: list[tuple[float, ...]] = []
+        self.ecl_windows: list[tuple[R3EclipseWindowSpec, ...]] = []
+        self._u_ecl_map: dict[tuple[int, int, int, int], int] = {}
+        self._u_ecl_max: dict[tuple[int, int, int, int], float] = {}
+        self._u_ecl_by_slot: dict[tuple[int, int, int], list[tuple[int, float]]] = {}
+        ctrl_dt = problem.dt_s if problem.control_period_s is None else problem.control_period_s
+        for j, node in enumerate(problem.nodes):
+            s_s, e_wins = _resolve_node_power_windows(problem, node)
+            self.sunlit_s.append(s_s)
+            self.ecl_windows.append(e_wins)
+            for w_idx, win in enumerate(e_wins):
+                budget = win.budget_j
+                if budget is not None and budget <= 1e-9:
+                    continue
+                for t, dur in win.slot_durations_s:
+                    if dur <= 1e-12:
+                        continue
+                    for l_i, tier in enumerate(problem.tiers):
+                        if not (tier.power_w > 0.0 or tier.rate_tok_s > 0.0):
+                            continue
+                        if budget is not None and tier.power_w * ctrl_dt > budget + 1e-9:
+                            continue
+                        key = (j, w_idx, t, l_i)
+                        self._u_ecl_map[key] = off
+                        self._u_ecl_max[key] = dur
+                        self._u_ecl_by_slot.setdefault((j, t, l_i), []).append((off, dur))
+                        off += 1
         self.total = off
 
     @staticmethod
@@ -316,6 +352,30 @@ def _eclipse_windows(is_eclipse: tuple[bool, ...]) -> list[tuple[int, int]]:
     if start is not None:
         windows.append((start, len(is_eclipse)))
     return windows
+
+
+def _resolve_node_power_windows(
+    problem: R3Problem, node: R3NodeSpec
+) -> tuple[tuple[float, ...], tuple[R3EclipseWindowSpec, ...]]:
+    sunlit_s = (
+        node.sunlit_s
+        if node.sunlit_s is not None
+        else tuple(0.0 if ecl else problem.dt_s for ecl in node.is_eclipse)
+    )
+    if node.eclipse_windows is not None:
+        return sunlit_s, node.eclipse_windows
+    ecl_windows = tuple(
+        R3EclipseWindowSpec(
+            budget_j=(
+                node.init_dod_remaining_j
+                if (w_start == 0 and node.init_dod_remaining_j is not None)
+                else problem.eclipse_dod_budget_j
+            ),
+            slot_durations_s=tuple((t, problem.dt_s) for t in range(w_start, w_end)),
+        )
+        for w_start, w_end in _eclipse_windows(node.is_eclipse)
+    )
+    return sunlit_s, ecl_windows
 
 
 def _shortest_path_edges(
@@ -529,17 +589,30 @@ class R3Solver:
             (s2_status, s2_wall, s2_gap),
         )
 
+    @staticmethod
+    def _validate_node(problem: R3Problem, n: R3NodeSpec) -> None:
+        if len(n.is_eclipse) != problem.horizon_slots:
+            raise ValueError(f"node {n.node_id} is_eclipse length must match horizon_slots")
+        if n.sunlit_s is not None and len(n.sunlit_s) != problem.horizon_slots:
+            raise ValueError(f"node {n.node_id} sunlit_s length must match horizon_slots")
+        if n.eclipse_windows is not None:
+            for win in n.eclipse_windows:
+                for t, dur in win.slot_durations_s:
+                    if not (0 <= t < problem.horizon_slots) or dur < 0.0:
+                        raise ValueError(f"node {n.node_id} invalid eclipse window slot ({t}, {dur})")
+        if n.tier_rates_tok_s is not None and len(n.tier_rates_tok_s) != len(problem.tiers):
+            raise ValueError(f"node {n.node_id} tier_rates_tok_s length must match tiers")
+
     def _validate(self, problem: R3Problem) -> None:
         if problem.horizon_slots <= 0 or problem.dt_s <= 0.0:
             raise ValueError("horizon_slots and dt_s must be positive")
+        if problem.control_period_s is not None and problem.control_period_s <= 0.0:
+            raise ValueError("control_period_s must be positive")
         if not problem.nodes or not problem.tiers:
             raise ValueError("nodes and tiers must be non-empty")
         node_ids = {n.node_id for n in problem.nodes}
         for n in problem.nodes:
-            if len(n.is_eclipse) != problem.horizon_slots:
-                raise ValueError(f"node {n.node_id} is_eclipse length must match horizon_slots")
-            if n.tier_rates_tok_s is not None and len(n.tier_rates_tok_s) != len(problem.tiers):
-                raise ValueError(f"node {n.node_id} tier_rates_tok_s length must match tiers")
+            self._validate_node(problem, n)
         for e in problem.edges:
             if len(e.tot_bps) != problem.horizon_slots:
                 raise ValueError(f"edge ({e.src}, {e.dst}) tot_bps length must match horizon_slots")
@@ -582,6 +655,14 @@ class R3Solver:
 
         for r, req in enumerate(problem.requests):
             self._apply_request_bounds(problem, idx, node_pos, routes, lb, ub, r, req)
+
+        ctrl_dt = problem.dt_s if problem.control_period_s is None else problem.control_period_s
+        for (j, w_idx, _t, l_i), var_id in idx._u_ecl_map.items():
+            budget = idx.ecl_windows[j][w_idx].budget_j
+            if budget is not None and (budget <= 1e-9 or problem.tiers[l_i].power_w * ctrl_dt > budget + 1e-9):
+                ub[var_id] = 0.0
+            else:
+                ub[var_id] = 1.0
 
         lb[idx.eta()] = -math.inf
         return integrality, lb, ub
@@ -661,6 +742,25 @@ class R3Solver:
             ub[idx.tx_just_done(r, 0)] = 0.0
             lb[idx.prop_rem(r, 0)] = max(0.0, snap.prop_rem_s - problem.dt_s)
 
+    @staticmethod
+    def _add_eclipse_dod_constraints(
+        problem: R3Problem, idx: _VarLayout, j: int, cb: _ConstraintBuilder
+    ) -> None:
+        for w_idx, win in enumerate(idx.ecl_windows[j]):
+            budget_terms: list[tuple[int, float]] = []
+            for t, _dur in win.slot_durations_s:
+                for l_i, tier in enumerate(problem.tiers):
+                    key = (j, w_idx, t, l_i)
+                    u_var = idx._u_ecl_map.get(key)
+                    if u_var is None:
+                        continue
+                    dur = idx._u_ecl_max[key]
+                    cb.add([(u_var, 1.0), (idx.z(j, l_i, t), -1.0)], -math.inf, 0.0)
+                    if win.budget_j is not None and tier.power_w > 0.0:
+                        budget_terms.append((u_var, tier.power_w * dur))
+            if win.budget_j is not None and budget_terms:
+                cb.add(budget_terms, -math.inf, win.budget_j)
+
     def _add_power_thermal_constraints(self, problem: R3Problem, idx: _VarLayout, cb: _ConstraintBuilder) -> None:
         tau = problem.r_th * problem.c_th
         alpha = math.exp(-problem.dt_s / tau) if tau > 0.0 else 0.0
@@ -691,19 +791,28 @@ class R3Solver:
                                 0.0,
                             )
 
-            if problem.eclipse_dod_budget_j is not None:
-                for w_start, w_end in _eclipse_windows(node.is_eclipse):
-                    budget = (
-                        node.init_dod_remaining_j
-                        if (w_start == 0 and node.init_dod_remaining_j is not None)
-                        else problem.eclipse_dod_budget_j
-                    )
-                    terms = [
-                        (idx.z(j, l_i, t), problem.tiers[l_i].power_w * problem.dt_s)
-                        for t in range(w_start, w_end)
-                        for l_i in range(idx.L)
-                    ]
-                    cb.add(terms, -math.inf, budget)
+            self._add_eclipse_dod_constraints(problem, idx, j, cb)
+
+    @staticmethod
+    def _add_slot_rate_cap(  # noqa: PLR0913
+        idx: _VarLayout,
+        cb: _ConstraintBuilder,
+        j: int,
+        t: int,
+        r: int,
+        rates: tuple[float, ...],
+        extra_lhs: tuple[tuple[int, float], ...] = (),
+        rhs: float = 0.0,
+    ) -> None:
+        terms: list[tuple[int, float]] = [(idx.g(r, j, t), 1.0), *extra_lhs]
+        for l_i in range(idx.L):
+            rate = rates[l_i]
+            if rate <= 0.0:
+                continue
+            terms.append((idx.z(j, l_i, t), -rate * idx.sunlit_s[j][t]))
+            for u_var, dur in idx._u_ecl_by_slot.get((j, t, l_i), ()):
+                terms.append((u_var, -rate * dur))
+        cb.add(terms, -math.inf, rhs)
 
     def _add_request_compute_constraints(self, problem: R3Problem, idx: _VarLayout, cb: _ConstraintBuilder) -> None:
         node_rates = [
@@ -731,9 +840,7 @@ class R3Solver:
                 cb.add(kv_terms, -math.inf, problem.nodes[j].kv_cap_bytes)
 
                 for r, req in enumerate(problem.requests):
-                    cap_terms = [(idx.g(r, j, t), 1.0)]
-                    cap_terms.extend((idx.z(j, l_i, t), -rates_j[l_i] * problem.dt_s) for l_i in range(idx.L))
-                    cb.add(cap_terms, -math.inf, 0.0)
+                    self._add_slot_rate_cap(idx, cb, j, t, r, rates_j)
                     cb.add(
                         [(idx.g(r, j, t), 1.0), (idx.x(r, j, t), -min(req.remaining_tokens, max_rate_j * problem.dt_s))],
                         -math.inf,
@@ -751,9 +858,9 @@ class R3Solver:
                         rates_k = problem.batch_tier_rates[min(k_end - 1, len(problem.batch_tier_rates) - 1)]
                         m_big = max(max_rate_j, max(rates_k, default=0.0)) * problem.dt_s
                         for r in range(idx.R):
-                            b_terms = [(idx.g(r, j, t), 1.0), (idx.b_ge(j, t, b_idx), m_big)]
-                            b_terms.extend((idx.z(j, l_i, t), -rates_k[l_i] * problem.dt_s) for l_i in range(idx.L))
-                            cb.add(b_terms, -math.inf, m_big)
+                            self._add_slot_rate_cap(
+                                idx, cb, j, t, r, rates_k, extra_lhs=((idx.b_ge(j, t, b_idx), m_big),), rhs=m_big
+                            )
 
         for r, req in enumerate(problem.requests):
             cb.add([(idx.comp(r, t), 1.0) for t in range(idx.H)], -math.inf, 1.0)

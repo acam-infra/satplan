@@ -1057,7 +1057,7 @@ def test_r2f_intraslot_link_break_and_boundary_conservatism(
     )
     result = R3Solver().solve(problem)
     _exec_returned_schedule(world, env, result, 5.0, slots=4)
-    actual_ontime = {0} if (req.t_delivered is not None and req.t_delivered <= deadline_s) else set()
+    actual_ontime = {r.i for r in world.reqs if r.t_delivered is not None and r.t_delivered <= r.deadline}
     assert set(result.goodput_req_ids).issubset(actual_ontime)
     if expect_ontime:
         assert result.goodput_req_ids == (0,)
@@ -1094,3 +1094,165 @@ def test_r2f_recovery_and_future_link_up_periodic_positive() -> None:
         w.submit(r)
         env.run(until=30.0)
         assert r.node == 2 and r.t_delivered is not None and r.t_delivered <= 30.0
+
+
+@pytest.mark.parametrize(
+    ("eclipse_start_s", "pout", "expect_ontime"),
+    [
+        (6.5, 50, False),   # before slot midpoint (7.501)
+        (7.5, 50, False),   # at slot midpoint
+        (8.0, 50, False),   # after slot midpoint (R8 repro)
+        (10.0, 49, True),   # slot boundary: [5.001, 10.0) has 4.999s sunlit -> 49 tok fits
+        (8.0, 25, True),    # after midpoint, smaller request fits in [5.001, 8.0)
+        (20.0, 50, True),   # continuous sunlit
+    ],
+)
+def test_r1c_slot_interior_eclipse_entry_and_sunlit_positive(
+    eclipse_start_s: float, pout: int, expect_ontime: bool
+) -> None:
+    """R1c: slot-interior eclipse entry bounds compute to sunlit duration; positive cases still deliver."""
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "r1c-eclipse-entry",
+        "horizon_s": 60.0,
+        "nodes": [{"id": 0, "role": "rs"}, {"id": 1, "role": "compute"}],
+        "edges": [{"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 60.0]]}],
+        "dark": [[], [[0.0, 5.0], [eclipse_start_s, 60.0]]],
+    })
+    cfg = _base_cfg()
+    cfg["control_period_s"] = 100.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, placer=lambda v, r: 1, planner=get_planner("none"), seed=1)
+    req = Request(0, 0, 0.0, False, 1, pout, 1.0, 10.001)
+    world.submit(req)
+    start = 5.001
+    env.run(until=start)
+    problem = ProblemBuilder(horizon_slots=3, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    result = R3Solver().solve(problem)
+    _exec_returned_schedule(world, env, result, start, slots=1)
+    actual_ontime = {0} if (req.t_delivered is not None and req.t_delivered <= req.deadline) else set()
+    assert set(result.goodput_req_ids).issubset(actual_ontime)
+    if expect_ontime:
+        assert result.goodput_req_ids == (0,)
+        assert 0 in actual_ontime
+    else:
+        assert result.goodput_req_ids == ()
+
+
+@pytest.mark.parametrize(
+    ("dark_intervals", "pout", "expect_ontime"),
+    [
+        ([[0.0, 7.0], [10.0, 60.0]], 25, True),   # exit at 7s -> 3s sunlit -> 25 tok fits
+        ([[0.0, 7.0], [10.0, 60.0]], 40, False),  # exit at 7s -> 3s sunlit -> 40 tok infeasible
+        ([[0.0, 7.0], [9.0, 60.0]], 15, True),    # short 2s sunlit [7, 9) then re-entry -> 15 tok fits
+        ([[0.0, 7.0], [9.0, 60.0]], 25, False),   # short 2s sunlit [7, 9) then re-entry -> 25 tok infeasible
+    ],
+)
+def test_r1c_slot_interior_eclipse_exit_and_short_sunlit_reentry(
+    dark_intervals: list[list[float]], pout: int, expect_ontime: bool
+) -> None:
+    """R1c: slot-interior eclipse exit and short sunlit window before re-entry."""
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "r1c-exit-reentry",
+        "horizon_s": 60.0,
+        "nodes": [{"id": 0, "role": "rs"}, {"id": 1, "role": "compute"}],
+        "edges": [{"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 60.0]]}],
+        "dark": [[], dark_intervals],
+    })
+    cfg = _base_cfg()
+    cfg["control_period_s"] = 5.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, placer=lambda v, r: 1, planner=get_planner("none"), seed=1)
+    req = Request(0, 0, 0.0, False, 1, pout, 1.0, 10.0)
+    world.submit(req)
+    env.run(until=5.0)
+    problem = ProblemBuilder(horizon_slots=3, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    result = R3Solver().solve(problem)
+    _exec_returned_schedule(world, env, result, 5.0, slots=1)
+    actual_ontime = {0} if (req.t_delivered is not None and req.t_delivered <= req.deadline) else set()
+    assert set(result.goodput_req_ids).issubset(actual_ontime)
+    if expect_ontime:
+        assert result.goodput_req_ids == (0,)
+        assert 0 in actual_ontime
+    else:
+        assert result.goodput_req_ids == ()
+
+
+@pytest.mark.parametrize(
+    ("dod_budget_j", "dark_intervals", "pre_consume_until", "pout", "deadline_s", "expect_ontime"),
+    [
+        (375.0, [[5.0, 60.0]], 5.0, 20, 10.1, True),                  # finite DoD: 75W*5s=375J -> 25 tok max (5 tok/s)
+        (375.0, [[5.0, 60.0]], 5.0, 35, 10.1, False),                 # finite DoD: 300W blocked by period*P > DoD
+        (None, [[5.0, 60.0]], 5.0, 45, 10.1, True),                   # unlimited DoD: 300W runs -> 50 tok max (10 tok/s)
+        (375.0, [[0.0, 7.0], [10.5, 60.0]], 5.0, 40, 15.1, True),     # cross-window: w0 exhausted, [7,10.5) recovers, w1=375J
+        (375.0, [[0.0, 7.0], [10.5, 60.0]], 5.0, 65, 15.1, False),    # cross-window: 65 > 35 + 25 = 60 tok
+    ],
+)
+def test_r1c_dod_modes_and_cross_window_consumed_budget(
+    dod_budget_j: float | None,
+    dark_intervals: list[list[float]],
+    pre_consume_until: float,
+    pout: int,
+    deadline_s: float,
+    expect_ontime: bool,
+) -> None:
+    """R1c: finite/unlimited DoD, control_period tier admission, and cross-window consumed DoD."""
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "r1c-dod-modes",
+        "horizon_s": 60.0,
+        "nodes": [{"id": 0, "role": "rs"}, {"id": 1, "role": "compute"}],
+        "edges": [{"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 60.0]]}],
+        "dark": [[], dark_intervals],
+    })
+    cfg = _base_cfg()
+    cfg["control_period_s"] = 5.0
+    cfg["power"]["eclipse_dod_budget_j"] = dod_budget_j
+    cfg["gpu"].update(t_fixed_s=0.0, t_weights_s=0.1, t_kv_tok_s=0.0, t_seq_s=0.0)
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, placer=lambda v, r: 1, planner=get_planner("none"), seed=1)
+    # Exhaust w0 DoD (375 J = 75W * 5s) before t=5.0
+    if dark_intervals[0][0] == 0.0:
+        world.submit(Request(99, 0, 0.0, False, 1, 60, 1.0, 15.0))
+    req = Request(0, 0, pre_consume_until, False, 1, pout, 1.0, deadline_s)
+    world.submit(req)
+    env.run(until=pre_consume_until + 0.05)
+    now = env.now
+    if dark_intervals[0][0] == 0.0:
+        assert world.forecast_view.dod_remaining_j(1) == pytest.approx(0.0, abs=1e-6)
+    problem = ProblemBuilder(horizon_slots=3, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    result = R3Solver().solve(problem)
+    _exec_returned_schedule(world, env, result, now, slots=2)
+    actual_ontime = {r.i for r in world.reqs if r.t_delivered is not None and r.t_delivered <= r.deadline}
+    assert set(result.goodput_req_ids).issubset(actual_ontime)
+    if expect_ontime:
+        assert 0 in result.goodput_req_ids
+        assert 0 in actual_ontime
+    else:
+        assert 0 not in result.goodput_req_ids
+
+
+def test_r1c_migrate_from_eclipse_to_sunlit_positive() -> None:
+    """R1c positive: eclipse node with DoD=0 migrates request to sunlit node and finishes on time."""
+    tr = _two_cs_trace(c1_dark=[[0.0, 60.0]], c2_dark=[])
+    cfg = _base_cfg(hop_latency_s=0.0)
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["net"]["link_gbps"] = {"inter": 0.16, "rs": 10.0}
+    cfg["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+    env = simpy.Environment()
+    w = CoWorld(env, tr, cfg, placer=get_placer("nearest"), planner=get_planner("r3_milp"), seed=1)
+    r = Request(0, 0, 0.0, False, 4800, 50, 1.0, 20.0)
+    w.submit(r)
+    env.run(until=20.0)
+    assert r.node == 2 and r.n_mig == 1 and r.t_delivered is not None and r.t_delivered <= 20.0

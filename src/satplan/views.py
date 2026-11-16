@@ -41,6 +41,10 @@ class LocalStateView:
         return self._w.hop_lat
 
     @property
+    def control_period_s(self) -> float:
+        return self._w.pt.period
+
+    @property
     def t_max_C(self) -> float:
         return self._w.pt.params.t_max_C
 

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from satplan.actions import MigrationOrder, PlanAction
 from satplan.r3_solver import (
+    R3EclipseWindowSpec,
     R3EdgeSpec,
     R3NodeSpec,
     R3Problem,
@@ -103,6 +104,7 @@ class ProblemBuilder:
             r_th=params.r_th,
             c_th=params.c_th,
             eclipse_dod_budget_j=params.eclipse_dod_budget_j,
+            control_period_s=view.control_period_s,
             max_inflight=invariants.max_inflight,
             max_mig_per_req=invariants.max_mig_per_req,
             hop_latency_s=view.hop_latency_s,
@@ -134,6 +136,59 @@ class ProblemBuilder:
         return max(1, round(len(decode_reqs) / denom)), sum(r.kv for r in decode_reqs) / denom
 
     @staticmethod
+    def _build_node_power_windows(
+        view: ForecastView,
+        params: PhysicsParams,
+        node_id: int,
+        horizon_slots: int,
+        dt_s: float,
+    ) -> tuple[tuple[bool, ...], tuple[float, ...], tuple[R3EclipseWindowSpec, ...]]:
+        t0 = view.now
+        t_end = t0 + horizon_slots * dt_s
+        segs = view.power_segments(node_id, t0, t_end)
+        merged_ecl: list[tuple[float, float]] = []
+        for a, b, is_ecl in segs:
+            if not is_ecl or b <= a + 1e-12:
+                continue
+            if merged_ecl and merged_ecl[-1][1] >= a - 1e-12:
+                merged_ecl[-1] = (merged_ecl[-1][0], max(merged_ecl[-1][1], b))
+            else:
+                merged_ecl.append((a, b))
+
+        sunlit_list: list[float] = []
+        ecl_bools: list[bool] = []
+        win_slots: list[list[tuple[int, float]]] = [[] for _ in merged_ecl]
+        for t in range(horizon_slots):
+            sa = t0 + t * dt_s
+            sb = sa + dt_s
+            sun_t = sum(
+                max(0.0, min(b, sb) - max(a, sa))
+                for a, b, is_ecl in segs
+                if not is_ecl
+            )
+            ecl_t = 0.0
+            for w_idx, (wa, wb) in enumerate(merged_ecl):
+                ov = max(0.0, min(wb, sb) - max(wa, sa))
+                if ov > 1e-12:
+                    win_slots[w_idx].append((t, ov))
+                    ecl_t += ov
+            sunlit_list.append(sun_t)
+            ecl_bools.append(ecl_t > 1e-9)
+
+        ecl_windows: list[R3EclipseWindowSpec] = []
+        for w_idx, (wa, _wb) in enumerate(merged_ecl):
+            if not win_slots[w_idx]:
+                continue
+            if params.eclipse_dod_budget_j is None:
+                budget = None
+            elif wa <= t0 + 1e-12:
+                budget = view.dod_remaining_j(node_id)
+            else:
+                budget = params.eclipse_dod_budget_j
+            ecl_windows.append(R3EclipseWindowSpec(budget_j=budget, slot_durations_s=tuple(win_slots[w_idx])))
+        return tuple(ecl_bools), tuple(sunlit_list), tuple(ecl_windows)
+
+    @staticmethod
     def _build_nodes(  # noqa: PLR0913
         view: ForecastView,
         params: PhysicsParams,
@@ -153,8 +208,8 @@ class ProblemBuilder:
         for j in view.compute_nodes:
             res_decode_bytes = sum(r.reserved_tokens * view.bpt for r in decode_by_node[j])
             kv_cap_bytes = view.kv_headroom(j) + res_decode_bytes + incoming_mig_bytes[j]
-            is_eclipse = tuple(
-                view.is_eclipse_at(j, view.now + (t + 0.5) * dt_s) for t in range(horizon_slots)
+            is_eclipse, sunlit_s, ecl_windows = ProblemBuilder._build_node_power_windows(
+                view, params, j, horizon_slots, dt_s
             )
             dod_rem = None if params.eclipse_dod_budget_j is None else view.dod_remaining_j(j)
             active_j = [r for r in decode_by_node[j] if r.is_active_decode]
@@ -170,6 +225,8 @@ class ProblemBuilder:
                     is_eclipse=is_eclipse,
                     init_dod_remaining_j=dod_rem,
                     tier_rates_tok_s=_node_tier_rates(params, nd_j, ctx_j),
+                    sunlit_s=sunlit_s,
+                    eclipse_windows=ecl_windows,
                 )
             )
         return tuple(nodes)
