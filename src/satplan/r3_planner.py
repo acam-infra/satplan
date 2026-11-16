@@ -42,6 +42,12 @@ def _node_tier_rates(params: PhysicsParams, nd_j: int, ctx_j: float) -> tuple[fl
     return tuple(0.0 if cf <= 0.0 else 1.0 / max(1e-9, params.iter_time(max(1, nd_j), ctx_j, cf)) for cf in clocks)
 
 
+def _req_kv_ub(params: PhysicsParams, r: Request, window_s: float) -> float:
+    clocks = [t.clock_f for t in params.tiers if t.clock_f > 0.0] if params.discrete else [1.0]
+    max_rate = max((1.0 / max(1e-9, params.iter_time(1, r.kv, cf)) for cf in clocks), default=0.0)
+    return min(float(r.pin + r.pout), float(r.kv) + min(float(r.remaining), max_rate * window_s))
+
+
 class ProblemBuilder:
     """Maps a ForecastView snapshot and PhysicsParams into a pure-data R3Problem."""
 
@@ -71,12 +77,14 @@ class ProblemBuilder:
         params = view.physics_params
 
         decode_reqs, decode_by_node = self._collect_decode_reqs(view)
+        window_s = horizon_slots * dt_s
+        kv_ubs = {r.i: _req_kv_ub(params, r, window_s) for r in decode_reqs}
         nd_rep, ctx_rep = self._rep_batch(view, decode_reqs)
         tiers = _tier_specs(params, nd_rep, ctx_rep)
-        nodes = self._build_nodes(view, params, decode_reqs, decode_by_node, horizon_slots, dt_s, ctx_rep)
+        nodes = self._build_nodes(view, params, decode_reqs, decode_by_node, horizon_slots, dt_s, ctx_rep, kv_ubs)
         edges, routes = self._build_edges_and_routes(view, horizon_slots, dt_s)
-        requests = self._build_requests(view, decode_reqs, tiers, horizon_slots, dt_s)
-        kv_sorted = sorted((r.kv for r in decode_reqs), reverse=True)
+        requests = self._build_requests(view, decode_reqs, tiers, horizon_slots, dt_s, kv_ubs)
+        kv_sorted = sorted(kv_ubs.values(), reverse=True)
         batch_tier_rates = (
             tuple(_node_tier_rates(params, k, sum(kv_sorted[:k])) for k in range(1, len(decode_reqs) + 1))
             if decode_reqs
@@ -134,6 +142,7 @@ class ProblemBuilder:
         horizon_slots: int,
         dt_s: float,
         ctx_rep: float,
+        kv_ubs: dict[int, float],
     ) -> tuple[R3NodeSpec, ...]:
         incoming_mig_bytes: dict[int, float] = {j: 0.0 for j in view.compute_nodes}
         for r in decode_reqs:
@@ -150,7 +159,7 @@ class ProblemBuilder:
             dod_rem = None if params.eclipse_dod_budget_j is None else view.dod_remaining_j(j)
             active_j = [r for r in decode_by_node[j] if r.is_active_decode]
             nd_j = len(active_j) if active_j else len(decode_by_node[j])
-            ctx_j = sum(r.kv for r in active_j) if active_j else sum(r.kv for r in decode_by_node[j])
+            ctx_j = sum(kv_ubs[r.i] for r in active_j) if active_j else sum(kv_ubs[r.i] for r in decode_by_node[j])
             if nd_j == 0:
                 nd_j, ctx_j = 1, ctx_rep
             nodes.append(
@@ -206,12 +215,13 @@ class ProblemBuilder:
         return tuple(edges), routes
 
     @staticmethod
-    def _build_requests(
+    def _build_requests(  # noqa: PLR0913
         view: ForecastView,
         decode_reqs: list[Request],
         tiers: tuple[R3TierSpec, ...],
         horizon_slots: int,
         dt_s: float,
+        kv_ubs: dict[int, float],
     ) -> tuple[R3RequestSpec, ...]:
         max_rate = max((t.rate_tok_s for t in tiers), default=0.0)
         horizon_cap_tok = max(1.0, 0.8 * max_rate * horizon_slots * dt_s)
@@ -226,11 +236,12 @@ class ProblemBuilder:
             else:
                 eff_tok = rem_tok
                 eff_dl = raw_dl
+            mig_kv_tok = r.kv if r.mig_dst is not None else kv_ubs[r.i]
             req_specs.append(
                 R3RequestSpec(
                     req_id=r.i,
                     init_node=r.node,
-                    kv_bytes=max(r.kv * view.bpt, 1.0),
+                    kv_bytes=max(mig_kv_tok * view.bpt, 1.0),
                     remaining_tokens=eff_tok,
                     deadline_s=eff_dl,
                     weight=1.0,

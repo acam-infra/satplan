@@ -424,6 +424,10 @@ class R3Solver:
             for e in range(idx.E):
                 for t in range(idx.H):
                     c2[idx.b_edge(r, e, t)] = 1.0
+            for j in range(idx.J):
+                for t in range(idx.H):
+                    # Break exact ties against holding destination KV / migrating earlier than needed
+                    c2[idx.m(r, j, t)] = 1e-4 * (idx.H - t)
 
         t2_0 = time.perf_counter()
         res2 = None
@@ -611,8 +615,11 @@ class R3Solver:
             n.tier_rates_tok_s if n.tier_rates_tok_s is not None else tuple(t.rate_tok_s for t in problem.tiers)
             for n in problem.nodes
         ]
-        # When batch degradation is <1% (no breakpoints), use conservative worst-case batch_tier_rates[-1]
-        cons_floor = problem.batch_tier_rates[-1] if (problem.batch_tier_rates and not idx.B_ks) else None
+        # Base interval [1, k_first - 1] (or [1, R] if no breakpoints) must use the slowest rate in that interval.
+        cons_floor: tuple[float, ...] | None = None
+        if problem.batch_tier_rates:
+            floor_k = (idx.B_ks[0] - 1) if idx.B_ks else len(problem.batch_tier_rates)
+            cons_floor = problem.batch_tier_rates[min(max(floor_k - 1, 0), len(problem.batch_tier_rates) - 1)]
         for j in range(idx.J):
             rates_j = (
                 tuple(min(node_rates[j][l_i], cons_floor[l_i]) for l_i in range(idx.L))
@@ -645,7 +652,8 @@ class R3Solver:
                             -math.inf,
                             float(k - 1),
                         )
-                        rates_k = problem.batch_tier_rates[min(k - 1, len(problem.batch_tier_rates) - 1)]
+                        k_end = (idx.B_ks[b_idx + 1] - 1) if (b_idx + 1 < len(idx.B_ks)) else idx.R
+                        rates_k = problem.batch_tier_rates[min(k_end - 1, len(problem.batch_tier_rates) - 1)]
                         m_big = max(max_rate_j, max(rates_k, default=0.0)) * problem.dt_s
                         for r in range(idx.R):
                             b_terms = [(idx.g(r, j, t), 1.0), (idx.b_ge(j, t, b_idx), m_big)]
@@ -713,15 +721,22 @@ class R3Solver:
         act_terms = [(idx.x(r, j, t), 1.0) for j in range(idx.J)] + [(idx.h(r, j, t), 1.0) for j in range(idx.J)]
         cb.add(act_terms + rem_active, 1.0, 1.0)
 
-        # tx_complete and tx_just_done
+        # tx_complete and tx_just_done (bidirectional one-shot per session)
         cb.add([(idx.tx_complete(r, t), 1.0)] + [(idx.m(r, j, t), -1.0) for j in range(idx.J)], -math.inf, 0.0)
         cb.add([(idx.tx_just_done(r, t), 1.0), (idx.tx_complete(r, t), -1.0)], -math.inf, 0.0)
         if t == 0:
             cb.add([(idx.tx_just_done(r, 0), 1.0), (idx.tx_complete(r, 0), -1.0)], 0.0, 0.0)
+            if req.init_mig_dst is None or req.init_mig_received_bytes < req.kv_bytes - 1e-6:
+                cb.add([(idx.tx_just_done(r, 0), 1.0), (idx.tx(r, 0), -1.0)], -math.inf, 0.0)
         else:
             prev_terms = [(idx.tx_just_done(r, t), 1.0), (idx.tx_complete(r, t), -1.0), (idx.tx_complete(r, t - 1), 1.0)]
             prev_terms.extend((idx.unlock(r, j, t), -1.0) for j in range(idx.J))
             cb.add(prev_terms, 0.0, math.inf)
+            # Upper bound: cannot fire tx_just_done again while tx_complete[t-1]==1 in same session
+            ub_terms = [(idx.tx_just_done(r, t), 1.0), (idx.tx_complete(r, t - 1), 1.0)]
+            ub_terms.extend((idx.unlock(r, j, t), -1.0) for j in range(idx.J))
+            cb.add(ub_terms, -math.inf, 1.0)
+            cb.add([(idx.tx_just_done(r, t), 1.0), (idx.tx(r, t), -1.0)], -math.inf, 0.0)
 
         # Propagation remaining time
         if problem.hop_latency_s > 0.0:

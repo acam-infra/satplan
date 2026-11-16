@@ -436,9 +436,9 @@ def test_r1_frozen_batch_after_join_must_not_promise_impossible_goodput() -> Non
     )
     result = R3Solver().solve(problem)
     _exec_returned_schedule(world, env, result, 1.0)
-    good_by_deadline = sum(r.t_delivered is not None and r.t_delivered <= r.deadline for r in reqs)
-    # Any request predicted as goodput MUST actually finish on time in CoWorld
-    assert len(result.goodput_req_ids) <= good_by_deadline
+    actual_ontime_ids = {r.i for r in reqs if r.t_delivered is not None and r.t_delivered <= r.deadline}
+    # Every request predicted as goodput MUST actually finish on time in CoWorld
+    assert set(result.goodput_req_ids) <= actual_ontime_ids
 
 
 def test_r2_latency_with_fair_share_and_cross_slot_propagation() -> None:
@@ -465,8 +465,8 @@ def test_r2_latency_with_fair_share_and_cross_slot_propagation() -> None:
     )
     result = R3Solver().solve(problem)
     _exec_returned_schedule(world, env, result, 5.0)
-    good_by_deadline = sum(r.t_delivered is not None and r.t_delivered <= r.deadline for r in reqs)
-    assert len(result.goodput_req_ids) <= good_by_deadline
+    actual_ontime_ids = {r.i for r in reqs if r.t_delivered is not None and r.t_delivered <= r.deadline}
+    assert set(result.goodput_req_ids) <= actual_ontime_ids
 
     # Also verify cross-slot propagation (> dt_s) does NOT freeze bytes to zero
     dt_s = 5.0
@@ -590,3 +590,87 @@ def test_r2_multihop_heterogeneous_paths_and_inflight_session() -> None:
     # unlocks at t=1 (5s), decodes 50 tok in slot 1 -> finishes at 10s <= 20s
     assert res.action.migrations == ()
     assert res.goodput_req_ids == (0,)
+
+
+def test_r1a_skipped_small_batch_breakpoint_must_be_conservative() -> None:
+    """R1a counterexample: sparse batch breakpoint intervals must use slowest rate in interval."""
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "review-small-batch-breakpoint",
+        "horizon_s": 60.0,
+        "nodes": [{"id": 0, "role": "rs"}] + [{"id": j, "role": "compute"} for j in (1, 2, 3)],
+        "edges": [
+            {"u": s, "v": d, "kind": "inter" if s else "rs", "up": [[0.0, 60.0]]}
+            for s, d in ((0, 1), (0, 2), (1, 3), (2, 3))
+        ],
+        "dark": [[], [[0.0, 60.0]], [[0.0, 60.0]], []],
+    })
+    cfg = _base_cfg(hop_latency_s=0.0)
+    cfg["control_period_s"] = 100.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["gpu"].update(t_fixed_s=0.0997, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0003)
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, placer=lambda view, req: 2 if req.i == 1 else 1, planner=get_planner("none"), seed=1)
+    reqs = [Request(i, 0, 0.0, False, 1, 50, 1.0, 11.0) for i in (0, 1)]
+    reqs.append(Request(2, 0, 0.0, False, 1, 1000, 1.0, 10000.0))
+    for req in reqs:
+        world.submit(req)
+    env.run(until=1.0)
+    problem = ProblemBuilder(horizon_slots=4, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    result = R3Solver().solve(problem)
+    _exec_returned_schedule(world, env, result, 1.0)
+    actual_ontime_ids = {r.i for r in reqs[:2] if r.t_delivered is not None and r.t_delivered <= r.deadline}
+    assert set(result.goodput_req_ids) <= actual_ontime_ids
+
+
+def test_r1b_growing_context_within_horizon_must_be_conservative() -> None:
+    """R1b counterexample: context grows as tokens are generated within horizon (1 -> 501+)."""
+    cfg = _base_cfg(hop_latency_s=0.0)
+    cfg["control_period_s"] = 100.0
+    cfg["gpu"].update(t_fixed_s=0.0, t_weights_s=0.0, t_kv_tok_s=0.01, t_seq_s=0.0)
+    env = simpy.Environment()
+    world = CoWorld(env, _two_cs_trace(), cfg, placer=lambda view, req: 1, planner=get_planner("none"), seed=1)
+    req = Request(0, 0, 0.0, False, 1, 600, 1.0, 10.000001)
+    world.submit(req)
+    env.run(until=0.000001)
+    problem = ProblemBuilder(horizon_slots=2, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    result = R3Solver().solve(problem)
+    _exec_returned_schedule(world, env, result, 0.000001)
+    actual_ontime_ids = {req.i} if (req.t_delivered is not None and req.t_delivered <= req.deadline) else set()
+    assert set(result.goodput_req_ids) <= actual_ontime_ids
+
+
+def test_r2a_repeated_propagation_completion_blocked() -> None:
+    """R2a counterexample: tx_just_done must fire at most once per session; 20s prop > 15s deadline."""
+    problem = R3Problem(
+        horizon_slots=5,
+        dt_s=5.0,
+        nodes=(R3NodeSpec(0, 25.0, 500e6, (True,) * 5), R3NodeSpec(1, 25.0, 500e6, (False,) * 5)),
+        tiers=TIERS_STD,
+        edges=(R3EdgeSpec(0, 1, (160e6,) * 5),),
+        requests=(R3RequestSpec(0, 0, 50e6, 50.0, 15.0),),
+        eclipse_dod_budget_j=0.0,
+        hop_latency_s=20.0,
+    )
+    result = R3Solver().solve(problem)
+    assert result.goodput_req_ids == ()
+
+    # With 30s deadline (2.5s tx + 20s prop -> unlocks at t=25s, finishes 50 tok at 27.5s <= 30s), succeeds!
+    prob_ok = R3Problem(
+        horizon_slots=6,
+        dt_s=5.0,
+        nodes=(R3NodeSpec(0, 25.0, 500e6, (True,) * 6), R3NodeSpec(1, 25.0, 500e6, (False,) * 6)),
+        tiers=TIERS_STD,
+        edges=(R3EdgeSpec(0, 1, (160e6,) * 6),),
+        requests=(R3RequestSpec(0, 0, 50e6, 50.0, 30.0),),
+        eclipse_dod_budget_j=0.0,
+        hop_latency_s=20.0,
+    )
+    res_ok = R3Solver().solve(prob_ok)
+    assert res_ok.goodput_req_ids == (0,)
+    # Node 1 cannot run high tier before slot 5 (t=25s) when propagation finishes
+    assert res_ok.node_tiers[1][:5] == (0, 0, 0, 0, 0)
