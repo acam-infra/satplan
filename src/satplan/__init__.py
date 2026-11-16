@@ -1,7 +1,27 @@
 """Clean r3 time-expanded runtime reallocation engine."""
+from __future__ import annotations
 
-from satplan.metrics import RunResult
-from satplan.runner import load_config, run_simulation
-from satplan.trace import Trace
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from satplan.metrics import RunResult
+    from satplan.runner import load_config, run_simulation
+    from satplan.trace import Trace
 
 __all__ = ["RunResult", "Trace", "load_config", "run_simulation"]
+
+
+def __getattr__(name: str) -> Any:
+    if name == "RunResult":
+        from satplan.metrics import RunResult
+
+        return RunResult
+    if name == "Trace":
+        from satplan.trace import Trace
+
+        return Trace
+    if name in ("load_config", "run_simulation"):
+        from satplan import runner
+
+        return getattr(runner, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

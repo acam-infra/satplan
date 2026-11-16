@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import simpy
 
+from satplan.actions import MigrationOrder, PlanAction
 from satplan.net import FluidNet
 from satplan.power_thermal import PowerThermalModel
 from satplan.timing import iter_time, kv_bytes_per_tok
@@ -20,21 +21,6 @@ if TYPE_CHECKING:
     from satplan.planners import CompositePolicy, RuntimePlanner
 
 CHUNK_S = 30.0
-
-
-@dataclass(frozen=True)
-class MigrationOrder:
-    req_id: int
-    dst: int
-    nbytes: float | None = None
-
-
-@dataclass(frozen=True)
-class PlanAction:
-    tier_decisions: dict[int, int | None] = field(default_factory=dict)
-    pause_ids: tuple[int, ...] = ()
-    resume_ids: tuple[int, ...] = ()
-    migrations: tuple[MigrationOrder, ...] = ()
 
 
 @dataclass(eq=False)
