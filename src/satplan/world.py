@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import simpy
 
@@ -11,12 +11,13 @@ from satplan.net import FluidNet
 from satplan.power_thermal import PowerThermalModel
 from satplan.timing import iter_time, kv_bytes_per_tok
 from satplan.trace import INF, Trace
+from satplan.views import ForecastView, LocalStateView
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from satplan.metrics import Recorder
-    from satplan.planners import RuntimePlanner
+    from satplan.planners import CompositePolicy, RuntimePlanner
 
 CHUNK_S = 30.0
 
@@ -63,6 +64,7 @@ class Request:
     mig_target_bytes: float = 0.0
     mig_received_bytes: float = 0.0
     mig_in_flight: bool = False
+    n_mig: int = 0
 
     @property
     def reserved_tokens(self) -> int:
@@ -82,22 +84,28 @@ class Request:
 
 
 class CoWorld:
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         env: simpy.Environment,
         trace: Trace,
         cfg: dict,
         *,
-        placer: Callable[[CoWorld, Request], int | None],
-        planner: RuntimePlanner,
+        policy: CompositePolicy | None = None,
+        placer: Callable[[Any, Request], int | None] | None = None,
+        planner: RuntimePlanner | None = None,
         recorder: Recorder | None = None,
         seed: int = 0,
     ):
         self.env = env
         self.trace = trace
         self.cfg = cfg
-        self.placer = placer
-        self.planner = planner
+        if policy is None:
+            if placer is None or planner is None:
+                raise ValueError("CoWorld requires either policy or (placer, planner)")
+            from satplan.planners import CompositePolicy, RebalanceInvariants
+
+            policy = CompositePolicy(placer, planner, RebalanceInvariants.from_cfg(cfg))
+        self.policy = policy
         self.rec = recorder
         self.rng = random.Random(seed ^ 0x5EED)
         self.gpu = cfg["gpu"]
@@ -110,6 +118,8 @@ class CoWorld:
         self.hop_lat = float(cfg["net"]["hop_latency_s"])
         self.period = float(cfg["control_period_s"])
         self.stream = cfg["delivery"] == "stream"
+        self.rs_downlink = bool(cfg.get("rs_downlink", False))
+        self.stall_weight = float(cfg["slo"].get("stall_weight", 1.0))
         self.nodes: dict[int, list[Request]] = {j: [] for j in trace.compute}
         self._node_reserved_tokens: dict[int, int] = {j: 0 for j in trace.compute}
         self.reserved = {j: 0.0 for j in trace.compute}
@@ -119,7 +129,10 @@ class CoWorld:
         self._node_wake: dict[int, simpy.Event] = {j: env.event() for j in trace.compute}
         self._node_clock_f: dict[int, float] = {j: 0.0 for j in trace.compute}
         self._pt_last_t: dict[int, float] = {j: 0.0 for j in trace.compute}
+        self._inflight_mig = 0
         self.acc = {"upload_fail": 0}
+        self.local_view = LocalStateView(self)
+        self.forecast_view = ForecastView(self)
 
         env.process(self._changes())
         env.process(self._control())
@@ -167,12 +180,20 @@ class CoWorld:
     def fits(self, j: int, r: Request) -> bool:
         return self.kv_used(j) + r.reserved_tokens * self.bpt <= self.kv_cap
 
+    def inflight_migrations(self) -> int:
+        return self._inflight_mig
+
+    def req_by_id(self, req_id: int) -> Request | None:
+        return self._req_by_id.get(req_id)
+
     def iter_of(self, j: int, f: float | None = None) -> float:
         rs = self._active_reqs(j)
         nd = max(len(rs), 1)
         ctx = sum(r.kv for r in rs)
         cf = self.f_of(j) if f is None else f
-        return iter_time(nd, ctx, cf, self.gpu)
+        if cf <= 0.0:
+            return INF
+        return self.pt.params.iter_time(nd, ctx, cf)
 
     def wake_node(self, j: int) -> None:
         ev = self._node_wake.get(j)
@@ -229,6 +250,7 @@ class CoWorld:
         rem = max(0.0, r.mig_target_bytes - r.mig_received_bytes)
         nbytes = rem if order.nbytes is None else min(max(float(order.nbytes), 0.0), rem)
         r.mig_in_flight = True
+        self._inflight_mig += 1
         self.env.process(self._run_migration(r, p, nbytes))
 
     def _clear_migration(self, r: Request) -> None:
@@ -256,12 +278,14 @@ class CoWorld:
                 self._attach_node(dst, r)
                 r.node = dst
                 r.trail.append(dst)
+                r.n_mig += 1
                 r.paused = False
                 self.wake_node(src)
                 self.wake_node(dst)
                 self.log("mig_unlock", req=r.i, src=src, dst=dst)
         finally:
             r.mig_in_flight = False
+            self._inflight_mig -= 1
 
     def _settle_pt(self, j: int, now: float, *, is_eclipse: bool) -> None:
         dt = now - self._pt_last_t[j]
@@ -305,7 +329,7 @@ class CoWorld:
         while True:
             yield self.env.timeout(self.period)
             self._thermal_tick()
-            self.planner.rebalance(self)
+            self.policy.rebalance(self)
 
     def submit(self, r: Request) -> None:
         self.reqs.append(r)
@@ -330,7 +354,7 @@ class CoWorld:
 
     def _admit_and_upload(self, r: Request):
         while True:
-            j = self.placer(self, r)
+            j = self.policy.place(self, r)
             if j is None:
                 yield self.topo_event | self.env.timeout(self.period)
                 continue
@@ -361,7 +385,7 @@ class CoWorld:
             if r.state != "decode":
                 continue
             r.gen += min(r.remaining, got_base)
-            if self.stream:
+            if self.stream and self.rs_downlink:
                 r.stall_s += self.trace.disconnected_time(r.origin, j, t0, now)
             if r.remaining <= 1e-9:
                 r.gen = float(r.pout)
@@ -379,7 +403,7 @@ class CoWorld:
                 yield self._node_wake[j]
                 continue
             ctx = sum(r.kv for r in active)
-            it = iter_time(len(active), ctx, op.clock_f, self.gpu)
+            it = self.pt.params.iter_time(len(active), ctx, op.clock_f)
             dt_fin = min(r.remaining * it for r in active)
             step = min(CHUNK_S, max(dt_fin, 1e-9))
             t0 = self.env.now
@@ -396,6 +420,11 @@ class CoWorld:
         j = r.node
         self._detach_node(j, r)
         self.wake_node(j)
+        if not self.rs_downlink:
+            r.t_delivered = self.env.now
+            r.state = "done"
+            self.log("deliver", req=r.i, node=j, o=r.origin, path=[j])
+            return
         t_conn = self.trace.next_conn(r.origin, j, self.env.now)
         if t_conn == INF:
             r.state = "done"
@@ -413,7 +442,7 @@ class CoWorld:
     def good(self, r: Request) -> bool:
         if r.t_delivered is None or r.t_delivered > r.deadline:
             return False
-        if self.stream:
+        if self.stream and self.rs_downlink:
             dur = (r.t_decoded or r.t_delivered) - (r.t_admit or r.t)
             if dur > 0 and r.stall_s / dur > float(self.cfg["slo"]["max_stall_frac"]):
                 return False
