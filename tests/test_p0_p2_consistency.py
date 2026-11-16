@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import math
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
+import satplan.r3_solver as solver_module
 import simpy
 from satplan.actions import MigrationOrder, PlanAction
 from satplan.placers import get_placer
@@ -138,22 +140,29 @@ def test_bridge_r3_problem_solver_plan_action_coworld_first_slot() -> None:
 
 
 def test_same_slot_compute_and_transfer_conflict_rejected() -> None:
-    """Cannot compute on src AND complete transfer in the same slot to meet an impossible deadline."""
+    """Cannot compute on src AND complete transfer in the same slot to meet an impossible deadline.
+
+    Node 0 has power (10 tok/s) so old model could compute 50 tok on node 0 in slot 0 WHILE
+    transferring 100 MB to node 1, then compute 100 tok on node 1 (20 tok/s) in slot 1 = 150 tok by 10s.
+    With migration-compute mutual exclusion, migrating in slot 0 yields 0 tok, so 150 tok by 10s is impossible.
+    """
     dt_s = 5.0
     bps = 100e6 * 8.0 / dt_s  # 100 MB per 5s slot
-    # r0 starts on eclipse node 0 (0 J DoD), needs 100 MB transfer to node 1 + 100 tokens (5s at 20 tok/s).
-    # With no compute during migration, earliest finish is slot 1 (t=10.0s), NOT slot 0 (t=5.0s).
+    tiers_asym = (
+        R3TierSpec(index=0, power_w=0.0, rate_tok_s=0.0),
+        R3TierSpec(index=1, power_w=100.0, rate_tok_s=10.0),
+        R3TierSpec(index=2, power_w=300.0, rate_tok_s=20.0),
+    )
     prob_impossible = R3Problem(
         horizon_slots=3,
         dt_s=dt_s,
         nodes=(
-            R3NodeSpec(node_id=0, init_temp_C=25.0, kv_cap_bytes=500e6, is_eclipse=(True,) * 3),
-            R3NodeSpec(node_id=1, init_temp_C=25.0, kv_cap_bytes=500e6, is_eclipse=(False,) * 3),
+            R3NodeSpec(node_id=0, init_temp_C=25.0, kv_cap_bytes=500e6, is_eclipse=(False,) * 3, tier_rates_tok_s=(0.0, 10.0, 10.0)),
+            R3NodeSpec(node_id=1, init_temp_C=25.0, kv_cap_bytes=500e6, is_eclipse=(False,) * 3, tier_rates_tok_s=(0.0, 10.0, 20.0)),
         ),
-        tiers=TIERS_STD,
+        tiers=tiers_asym,
         edges=(R3EdgeSpec(src=0, dst=1, tot_bps=(bps,) * 3),),
-        requests=(R3RequestSpec(req_id=0, init_node=0, kv_bytes=100e6, remaining_tokens=100.0, deadline_s=5.0),),
-        eclipse_dod_budget_j=0.0,
+        requests=(R3RequestSpec(req_id=0, init_node=0, kv_bytes=100e6, remaining_tokens=150.0, deadline_s=10.0),),
     )
     res_imp = R3Solver().solve(prob_impossible)
     assert res_imp.goodput_req_ids == ()
@@ -162,10 +171,9 @@ def test_same_slot_compute_and_transfer_conflict_rejected() -> None:
         horizon_slots=3,
         dt_s=dt_s,
         nodes=prob_impossible.nodes,
-        tiers=TIERS_STD,
+        tiers=tiers_asym,
         edges=prob_impossible.edges,
         requests=(R3RequestSpec(req_id=0, init_node=0, kv_bytes=100e6, remaining_tokens=100.0, deadline_s=10.0),),
-        eclipse_dod_budget_j=0.0,
     )
     res_pos = R3Solver().solve(prob_possible)
     assert res_pos.goodput_req_ids == (0,)
@@ -243,27 +251,33 @@ def test_dest_kv_contention_and_multislot_continuation_and_no_byte_reuse() -> No
 
 
 def test_budget_exhausted_vs_null_unlimited_uniform_across_planners() -> None:
-    """max_mig_per_req omitted defaults to 4; None allows unlimited relay uniformly for reactive & r3_milp."""
+    """max_mig_per_req omitted defaults to 4; None allows >1 relay migrations uniformly for reactive & r3_milp."""
     assert RebalanceInvariants.from_cfg({}).max_mig_per_req == 4
     assert RebalanceInvariants.from_cfg({"rebalance_invariants": {"max_mig_per_req": None}}).max_mig_per_req is None
 
-    # Alternating eclipse: C-1 dark [0, 15], [30, 60]; C-2 dark [15, 30].
-    # Request needs 2 migrations (1->2 then 2->1) to finish if DoD=0.
-    tr = _two_cs_trace(c1_dark=[[0.0, 15.0], [30.0, 60.0]], c2_dark=[[15.0, 30.0]])
+    # C-1 sunlit ONLY [19, 26] (333 tok < 350); C-2 sunlit ONLY [0, 12.6] (301 tok < 350 after 1.28s transfer).
+    # Request (pin=10000, pout=350, deadline=26.0) MUST do 1->2 at t=5 and 2->1 at t=15/20 (2 migrations) to finish.
+    tr = _two_cs_trace(c1_dark=[[0.0, 19.0], [26.0, 60.0]], c2_dark=[[12.6, 60.0]])
     for planner_name in ("reactive", "r3_milp"):
         cfg_lim = _base_cfg(max_mig_per_req=1)
         cfg_lim["power"]["eclipse_dod_budget_j"] = 0.0
-        cfg_lim["workload"]["rate_per_rs_per_min"] = 6.0
-        res_lim = run_simulation(tr, cfg_lim, placer="nearest", planner=planner_name, seed=1)
+        cfg_lim["net"]["link_gbps"]["inter"] = 0.25
+        env_lim = simpy.Environment()
+        w_lim = CoWorld(env_lim, tr, cfg_lim, placer=get_placer("nearest"), planner=get_planner(planner_name), seed=1)
+        r_lim = Request(0, 0, 0.0, False, 10000, 350, 100.0, 26.0)
+        w_lim.submit(r_lim)
+        env_lim.run(until=60.0)
+        assert r_lim.n_mig <= 1
 
         cfg_inf = _base_cfg(max_mig_per_req=None)
         cfg_inf["power"]["eclipse_dod_budget_j"] = 0.0
-        cfg_inf["workload"]["rate_per_rs_per_min"] = 6.0
-        res_inf = run_simulation(tr, cfg_inf, placer="nearest", planner=planner_name, seed=1)
-
-        assert res_lim.metrics["n_req"] > 0
-        # Under max_mig=1 no request can exceed 1 migration; under None, relay (>1) is permitted
-        assert res_inf.metrics["link_GB_hops"] >= res_lim.metrics["link_GB_hops"]
+        cfg_inf["net"]["link_gbps"]["inter"] = 0.25
+        env_inf = simpy.Environment()
+        w_inf = CoWorld(env_inf, tr, cfg_inf, placer=get_placer("nearest"), planner=get_planner(planner_name), seed=1)
+        r_inf = Request(0, 0, 0.0, False, 10000, 350, 100.0, 26.0)
+        w_inf.submit(r_inf)
+        env_inf.run(until=60.0)
+        assert r_inf.n_mig >= 2
 
 
 def test_dual_flow_max_min_bottleneck_and_heterogeneous_context_batch() -> None:
@@ -384,3 +398,195 @@ def test_regression_local_view_0w_idle_and_store_and_run() -> None:
     assert res.metrics["delivered"] == res.metrics["n_req"]
     assert res.metrics["peak_temp_C"] <= cfg["thermal"]["T_max_C"] + 1e-6
     assert math.isfinite(res.metrics["energy_kj"])
+
+
+def _exec_returned_schedule(world: CoWorld, env: simpy.Environment, result, start: float, dt: float = 5.0, slots: int = 2) -> None:
+    world.apply_plan(result.action)
+    for slot in range(1, slots):
+        env.run(until=start + slot * dt)
+        world.apply_plan(PlanAction(tier_decisions={j: tiers[slot] for j, tiers in result.node_tiers.items()}))
+    env.run(until=start + slots * dt + 1e-6)
+
+
+def test_r1_frozen_batch_after_join_must_not_promise_impossible_goodput() -> None:
+    """R1 counterexample: two requests joining an empty node double batch iter_time (0.1*2=0.2s)."""
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "review-frozen-batch",
+        "horizon_s": 60.0,
+        "nodes": [{"id": 0, "role": "rs"}] + [{"id": j, "role": "compute"} for j in (1, 2, 3)],
+        "edges": [
+            {"u": s, "v": d, "kind": "inter" if s else "rs", "up": [[0.0, 60.0]]}
+            for s, d in ((0, 1), (0, 2), (1, 3), (2, 3))
+        ],
+        "dark": [[], [[0.0, 60.0]], [[0.0, 60.0]], []],
+    })
+    cfg = _base_cfg(hop_latency_s=0.0)
+    cfg["control_period_s"] = 100.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["gpu"].update(t_fixed_s=0.0, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.1)
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, placer=lambda view, req: req.i + 1, planner=get_planner("none"), seed=1)
+    reqs = [Request(i, 0, 0.0, False, 1, 50, 1.0, 11.0) for i in (0, 1)]
+    for req in reqs:
+        world.submit(req)
+    env.run(until=1.0)
+    problem = ProblemBuilder(horizon_slots=4, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    result = R3Solver().solve(problem)
+    _exec_returned_schedule(world, env, result, 1.0)
+    good_by_deadline = sum(r.t_delivered is not None and r.t_delivered <= r.deadline for r in reqs)
+    # Any request predicted as goodput MUST actually finish on time in CoWorld
+    assert len(result.goodput_req_ids) <= good_by_deadline
+
+
+def test_r2_latency_with_fair_share_and_cross_slot_propagation() -> None:
+    """R2 counterexample: 2 * 102.4 MB / 125 MB/s + 4s prop = 5.6384s > 5s slot; cannot unlock in slot 0."""
+    cfg = _base_cfg(hop_latency_s=4.0)
+    cfg["control_period_s"] = 100.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+    env = simpy.Environment()
+    world = CoWorld(
+        env,
+        _two_cs_trace(c1_dark=[[0.0, 60.0]]),
+        cfg,
+        placer=lambda view, req: 1,
+        planner=get_planner("none"),
+        seed=1,
+    )
+    reqs = [Request(i, 0, 0.0, False, 25000, 50, 1.0, 15.0) for i in (0, 1)]
+    for req in reqs:
+        world.submit(req)
+    env.run(until=5.0)
+    problem = ProblemBuilder(horizon_slots=3, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    result = R3Solver().solve(problem)
+    _exec_returned_schedule(world, env, result, 5.0)
+    good_by_deadline = sum(r.t_delivered is not None and r.t_delivered <= r.deadline for r in reqs)
+    assert len(result.goodput_req_ids) <= good_by_deadline
+
+    # Also verify cross-slot propagation (> dt_s) does NOT freeze bytes to zero
+    dt_s = 5.0
+    bps = 100e6 * 8.0 / dt_s
+    prob_long_prop = R3Problem(
+        horizon_slots=4,
+        dt_s=dt_s,
+        nodes=(
+            R3NodeSpec(node_id=0, init_temp_C=25.0, kv_cap_bytes=500e6, is_eclipse=(True,) * 4),
+            R3NodeSpec(node_id=1, init_temp_C=25.0, kv_cap_bytes=500e6, is_eclipse=(False,) * 4),
+        ),
+        tiers=TIERS_STD,
+        edges=(R3EdgeSpec(src=0, dst=1, tot_bps=(bps,) * 4),),
+        requests=(R3RequestSpec(req_id=0, init_node=0, kv_bytes=50e6, remaining_tokens=50.0, deadline_s=20.0),),
+        eclipse_dod_budget_j=0.0,
+        hop_latency_s=6.0,
+    )
+    res_lp = R3Solver().solve(prob_long_prop)
+    # 50MB takes 2.5s + 6.0s prop = 8.5s -> unlocks at t=2 (10s), decodes 50 tok in slot 2 -> finishes 15s <= 20s
+    assert res_lp.goodput_req_ids == (0,)
+
+
+def test_r3_secondary_solver_failure_must_not_report_optimal() -> None:
+    """R3 counterexample: Stage 2 error/timeout must degrade status & record fallback_reason."""
+    problem = R3Problem(
+        horizon_slots=2,
+        dt_s=5.0,
+        nodes=(R3NodeSpec(0, 25.0, 1000.0, (False, False)),),
+        tiers=(R3TierSpec(0, 0.0, 0.0), R3TierSpec(1, 1.0, 10.0)),
+        edges=(),
+        requests=(R3RequestSpec(0, 0, 10.0, 10.0, 10.0),),
+    )
+    backend = solver_module.milp
+    calls = 0
+
+    def fail_second(**kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            return SimpleNamespace(status=4, x=None, message="controlled secondary numerical error")
+        return backend(**kwargs)
+
+    with patch.object(solver_module, "milp", side_effect=fail_second):
+        result = R3Solver().solve(problem)
+    assert result.status != "optimal"
+    assert result.fallback_reason is not None
+    assert "stage2" in result.fallback_reason
+    assert result.stage1_status == "optimal"
+    assert result.stage2_status == "error"
+
+    # Stage 2 timeout with incumbent -> feasible_time_limit (not optimal)
+    calls = 0
+
+    def timeout_second_with_x(**kwargs):
+        nonlocal calls
+        calls += 1
+        res = backend(**kwargs)
+        if calls == 2:
+            return SimpleNamespace(status=1, x=res.x, mip_gap=0.05, message="stage2 time limit")
+        return res
+
+    with patch.object(solver_module, "milp", side_effect=timeout_second_with_x):
+        res_s2_to = R3Solver().solve(problem)
+    assert res_s2_to.status == "feasible_time_limit"
+    assert res_s2_to.stage2_status == "feasible_time_limit"
+
+    # Stage 1 timeout with incumbent -> feasible_time_limit
+    calls = 0
+
+    def timeout_first_with_x(**kwargs):
+        nonlocal calls
+        calls += 1
+        res = backend(**kwargs)
+        if calls == 1:
+            return SimpleNamespace(status=1, x=res.x, mip_gap=0.1, message="stage1 time limit")
+        return res
+
+    with patch.object(solver_module, "milp", side_effect=timeout_first_with_x):
+        res_s1_to = R3Solver().solve(problem)
+    assert res_s1_to.status == "feasible_time_limit"
+    assert res_s1_to.stage1_status == "feasible_time_limit"
+
+
+def test_r2_multihop_heterogeneous_paths_and_inflight_session() -> None:
+    """Multi-hop heterogeneous paths (0->1->2 vs 0->3->2) and existing in-flight session."""
+    dt_s = 5.0
+    bps_fast = 100e6 * 8.0 / dt_s
+    bps_slow = 50e6 * 8.0 / dt_s
+    prob = R3Problem(
+        horizon_slots=4,
+        dt_s=dt_s,
+        nodes=(
+            R3NodeSpec(0, 25.0, 500e6, (True,) * 4),
+            R3NodeSpec(1, 25.0, 0.0, (True,) * 4),
+            R3NodeSpec(2, 25.0, 500e6, (False,) * 4),
+        ),
+        tiers=TIERS_STD,
+        edges=(
+            R3EdgeSpec(0, 1, (bps_fast,) * 4),
+            R3EdgeSpec(1, 2, (bps_slow,) * 4),
+        ),
+        requests=(
+            R3RequestSpec(
+                0,
+                0,
+                100e6,
+                50.0,
+                20.0,
+                init_mig_dst=2,
+                init_mig_received_bytes=50e6,
+                init_mig_in_flight=True,
+            ),
+        ),
+        eclipse_dod_budget_j=0.0,
+        hop_latency_s=0.5,
+        max_inflight=1,
+    )
+    res = R3Solver().solve(prob)
+    assert res.status == "optimal"
+    # Existing in-flight session is not re-emitted in slot 0, completes remaining 50 MB + 1.0s prop in slot 0,
+    # unlocks at t=1 (5s), decodes 50 tok in slot 1 -> finishes at 10s <= 20s
+    assert res.action.migrations == ()
+    assert res.goodput_req_ids == (0,)

@@ -53,7 +53,7 @@ class ProblemBuilder:
         cvar_alpha: float = 0.95,
         cvar_weight: float = 1e-3,
         stage2_eps: float = 1e-5,
-        time_limit_s: float = 0.25,
+        time_limit_s: float = 0.5,
     ) -> None:
         if horizon_slots <= 0:
             raise ValueError("horizon_slots must be positive")
@@ -76,6 +76,12 @@ class ProblemBuilder:
         nodes = self._build_nodes(view, params, decode_reqs, decode_by_node, horizon_slots, dt_s, ctx_rep)
         edges, routes = self._build_edges_and_routes(view, horizon_slots, dt_s)
         requests = self._build_requests(view, decode_reqs, tiers, horizon_slots, dt_s)
+        kv_sorted = sorted((r.kv for r in decode_reqs), reverse=True)
+        batch_tier_rates = (
+            tuple(_node_tier_rates(params, k, sum(kv_sorted[:k])) for k in range(1, len(decode_reqs) + 1))
+            if decode_reqs
+            else None
+        )
 
         return R3Problem(
             horizon_slots=horizon_slots,
@@ -93,6 +99,7 @@ class ProblemBuilder:
             max_mig_per_req=invariants.max_mig_per_req,
             hop_latency_s=view.hop_latency_s,
             routes=routes,
+            batch_tier_rates=batch_tier_rates,
             cvar_alpha=self.cvar_alpha,
             cvar_weight=self.cvar_weight,
             stage2_eps=self.stage2_eps,
@@ -348,6 +355,12 @@ class R3RuntimePlanner:
             "wall_time_s": result.wall_time_s,
             "mip_gap": result.mip_gap,
             "fallback_reason": fallback_reason,
+            "stage1_status": result.stage1_status,
+            "stage1_wall_time_s": result.stage1_wall_time_s,
+            "stage1_mip_gap": result.stage1_mip_gap,
+            "stage2_status": result.stage2_status,
+            "stage2_wall_time_s": result.stage2_wall_time_s,
+            "stage2_mip_gap": result.stage2_mip_gap,
             "n_migrations": len(action.migrations),
         }
         return action
