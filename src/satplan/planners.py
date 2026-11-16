@@ -21,17 +21,25 @@ class RebalanceInvariants:
 
     interval_s: float = 5.0
     max_inflight: int = 24
-    max_mig_per_req: int = 4
+    max_mig_per_req: int | None = 4
 
     @classmethod
     def from_cfg(cls, cfg: dict) -> RebalanceInvariants:
         raw = cfg.get("rebalance_invariants") or {}
         if not isinstance(raw, dict):
             raise ValueError("rebalance_invariants must be a mapping")
+        if "max_mig_per_req" not in raw:
+            max_mig: int | None = 4
+        elif raw["max_mig_per_req"] is None:
+            max_mig = None
+        else:
+            max_mig = int(raw["max_mig_per_req"])
+            if max_mig < 0:
+                raise ValueError("max_mig_per_req must be nonnegative or None")
         return cls(
             interval_s=float(raw.get("interval_s", 5.0)),
             max_inflight=int(raw.get("max_inflight", 24)),
-            max_mig_per_req=int(raw.get("max_mig_per_req", 4)),
+            max_mig_per_req=max_mig,
         )
 
 
@@ -108,7 +116,7 @@ class ReactivePlanner:
                     req.state != "decode"
                     or req.mig_in_flight
                     or req.mig_dst is not None
-                    or req.n_mig >= invariants.max_mig_per_req
+                    or (invariants.max_mig_per_req is not None and req.n_mig >= invariants.max_mig_per_req)
                 ):
                     continue
                 dst = self._best_sunlit_dst(view, src, src_iter, req, rem_kv, extra_load, extra_kv)
@@ -153,7 +161,11 @@ class CompositePolicy:
             if len(filtered) >= avail_slots:
                 break
             req = world.req_by_id(order.req_id)
-            if req is None or req.n_mig >= self.invariants.max_mig_per_req:
+            if req is None or (
+                req.mig_dst is None
+                and self.invariants.max_mig_per_req is not None
+                and req.n_mig >= self.invariants.max_mig_per_req
+            ):
                 continue
             filtered.append(order)
         world.apply_plan(

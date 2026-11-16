@@ -36,6 +36,10 @@ class LocalStateView:
         return self._w.kv_cap
 
     @property
+    def hop_latency_s(self) -> float:
+        return self._w.hop_lat
+
+    @property
     def t_max_C(self) -> float:
         return self._w.pt.params.t_max_C
 
@@ -190,6 +194,9 @@ class ForecastView(LocalStateView):
 
     def edge_up_until(self, e: int, t: float) -> float:
         return self._w.trace.edge_up_until(e, t)
+
+    def path_at(self, s: int, d: int, t: float) -> tuple[list[int], list[int]] | None:
+        return self._w.trace.path(s, d, t)
 
     def next_conn(self, o: int, j: int, t: float) -> float:
         return self._w.trace.next_conn(o, j, t)
