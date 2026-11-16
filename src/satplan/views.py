@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from satplan.trace import INF
 
 if TYPE_CHECKING:
+    from satplan.power_thermal import PhysicsParams
     from satplan.world import CoWorld, Request
 
 
@@ -147,6 +148,14 @@ class ForecastView(LocalStateView):
     @property
     def stall_weight(self) -> float:
         return self._w.stall_weight
+
+    @property
+    def physics_params(self) -> PhysicsParams:
+        return self._w.pt.params
+
+    @property
+    def edges(self) -> tuple[tuple[int, int], ...]:
+        return tuple(self._w.trace.edges)
 
     def f_of(self, j: int, t: float | None = None) -> float:
         return self._w.f_of(j, t)

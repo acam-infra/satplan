@@ -84,12 +84,20 @@ def run_simulation(
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description="satplan tracer-bullet runner")
     ap.add_argument("config", help="YAML config path")
-    ap.add_argument("--out", default="", help="output directory for summary.json")
+    ap.add_argument("--out", default="", help="output directory for summary.json or suite artifacts")
     ap.add_argument("--viz", default="", help="directory for satsim.cosim_playback/v1 JSON")
+    ap.add_argument("--suite", action="store_true", help="run 3x3 cross-matrix suite and emit runs.csv + summary.md")
     ap.add_argument("--set", action="append", default=[], help="override key=val")
     args = ap.parse_args(argv)
     cfg = load_config(Path(args.config), args.set)
     trace = Trace.load((Path(cfg["_dir"]) / cfg["trace"]).resolve())
+    if args.suite:
+        from satplan.suite import run_suite
+
+        dest = Path(args.out) if args.out else Path("runs") / str(cfg["name"])
+        suite_res = run_suite(trace, cfg, dest)
+        print(suite_res.markdown)
+        return
     placer = str(cfg.get("placer", "nearest"))
     planner = str(cfg.get("planner", "none"))
     seed = int(cfg.get("seed", cfg.get("seeds", [1])[0]))

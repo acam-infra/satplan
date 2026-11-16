@@ -5,6 +5,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
+from satplan.r3_planner import R3RuntimePlanner
 from satplan.world import MigrationOrder, PlanAction
 
 if TYPE_CHECKING:
@@ -168,6 +169,7 @@ class CompositePolicy:
 PLANNERS: dict[str, type[RuntimePlanner]] = {
     "none": NonePlanner,
     "reactive": ReactivePlanner,
+    "r3_milp": R3RuntimePlanner,
 }
 
 
