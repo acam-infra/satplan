@@ -1008,3 +1008,89 @@ def test_r2e_static_shortcut_wait_and_link_break_lifecycle() -> None:
     w_b.apply_plan(PlanAction(migrations=(MigrationOrder(req_id=0, dst=2, nbytes=None),)))
     env_b.run(until=25.0)
     assert r_b.node == 2 and r_b.t_delivered is not None and r_b.t_delivered <= 25.0
+
+
+@pytest.mark.parametrize(
+    ("up_intervals", "deadline_s", "expect_ontime"),
+    [
+        ([[0.0, 7.0]], 15.0, False),                  # breaks before midpoint (t=7.0 < 7.5)
+        ([[0.0, 8.0]], 15.0, False),                  # R2f counterexample: breaks after midpoint (t=8.0 > 7.5)
+        ([[0.0, 10.0]], 15.0, True),                  # breaks exactly at slot boundary t=10.0: [5,10) fully up
+        ([[0.0, 8.0], [12.0, 60.0]], 15.0, False),    # short break + mid-slot recovery: [5,10) & [10,15) unusable
+        ([[12.0, 60.0]], 20.0, False),                # comes up mid-slot at t=12.0: unusable at t=10.0 boundary
+        ([[0.0, 60.0]], 15.0, True),                  # continuously up positive case
+    ],
+)
+def test_r2f_intraslot_link_break_and_boundary_conservatism(
+    up_intervals: list[list[float]], deadline_s: float, expect_ontime: bool
+) -> None:
+    """R2f: slot capacity and route lookahead must be conservative across full [t_start, t_end) intervals."""
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "r2f-link-intervals",
+        "horizon_s": 60.0,
+        "nodes": [
+            {"id": 0, "role": "rs"},
+            {"id": 1, "role": "compute"},
+            {"id": 2, "role": "compute"},
+        ],
+        "edges": [
+            {"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 60.0]]},
+            {"u": 1, "v": 2, "kind": "inter", "up": up_intervals},
+        ],
+        "dark": [[], [[0.0, 60.0]], []],
+    })
+    cfg = _base_cfg(hop_latency_s=0.0)
+    cfg["control_period_s"] = 100.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["net"]["link_gbps"] = {"inter": 0.04, "rs": 10.0}  # 5 MB/s inter-sat
+    cfg["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, placer=lambda v, r: 1, planner=get_planner("none"), seed=1)
+    req = Request(0, 0, 0.0, False, 4800, 50, 1.0, deadline_s)  # 19.6608 MB KV, 5s decode
+    world.submit(req)
+    env.run(until=5.0)
+
+    problem = ProblemBuilder(horizon_slots=4, time_limit_s=5.0).build(
+        world.forecast_view, RebalanceInvariants.from_cfg(cfg)
+    )
+    result = R3Solver().solve(problem)
+    _exec_returned_schedule(world, env, result, 5.0, slots=4)
+    actual_ontime = {0} if (req.t_delivered is not None and req.t_delivered <= deadline_s) else set()
+    assert set(result.goodput_req_ids).issubset(actual_ontime)
+    if expect_ontime:
+        assert result.goodput_req_ids == (0,)
+        assert 0 in actual_ontime
+    else:
+        assert result.goodput_req_ids == ()
+
+
+def test_r2f_recovery_and_future_link_up_periodic_positive() -> None:
+    """R2f positive: after short break/recovery at t=12s or link-up at t=12s, periodic planner waits for t=15s and delivers."""
+    for up_iv in ([[0.0, 8.0], [12.0, 60.0]], [[12.0, 60.0]]):
+        tr = Trace({
+            "schema": SCHEMA,
+            "name": "r2f-recovery-positive",
+            "horizon_s": 60.0,
+            "nodes": [
+                {"id": 0, "role": "rs"},
+                {"id": 1, "role": "compute"},
+                {"id": 2, "role": "compute"},
+            ],
+            "edges": [
+                {"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 60.0]]},
+                {"u": 1, "v": 2, "kind": "inter", "up": up_iv},
+            ],
+            "dark": [[], [[0.0, 60.0]], []],
+        })
+        cfg = _base_cfg(hop_latency_s=0.0)
+        cfg["power"]["eclipse_dod_budget_j"] = 0.0
+        cfg["net"]["link_gbps"] = {"inter": 0.04, "rs": 10.0}
+        cfg["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+        env = simpy.Environment()
+        w = CoWorld(env, tr, cfg, placer=get_placer("nearest"), planner=get_planner("r3_milp"), seed=1)
+        r = Request(0, 0, 0.0, False, 4800, 50, 1.0, 30.0)
+        w.submit(r)
+        env.run(until=30.0)
+        assert r.node == 2 and r.t_delivered is not None and r.t_delivered <= 30.0

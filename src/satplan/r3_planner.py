@@ -187,7 +187,12 @@ class ProblemBuilder:
                 continue
             cap_bps = view.edge_cap_Bps(e_idx) * 8.0
             tot_bps = tuple(
-                cap_bps if view.edge_up_at(e_idx, view.now + (t + 0.5) * dt_s) else 0.0
+                cap_bps
+                if (
+                    view.edge_up_at(e_idx, view.now + t * dt_s)
+                    and view.edge_up_until(e_idx, view.now + t * dt_s) >= view.now + (t + 1) * dt_s - 1e-9
+                )
+                else 0.0
                 for t in range(horizon_slots)
             )
             bg_0 = min(tot_bps[0], cur_rates.get(e_idx, 0.0) * 8.0)
@@ -199,7 +204,7 @@ class ProblemBuilder:
 
         routes: dict[tuple[int, int, int], tuple[int, ...]] = {}
         for t in range(horizon_slots):
-            t_query = view.now if t == 0 else view.now + (t + 0.5) * dt_s
+            t_query = view.now + t * dt_s
             for s in view.compute_nodes:
                 for d in view.compute_nodes:
                     if s == d:
