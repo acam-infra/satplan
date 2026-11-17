@@ -4,9 +4,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from satplan.metrics import write_playback
 from satplan.runner import run_simulation
 from satplan.trace import SCHEMA, Trace
+
+pytestmark = pytest.mark.e2e
 
 CANONICAL_KEYS = {
     "n_req",

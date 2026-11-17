@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import pytest
 import simpy
+from factories import _base_cfg
 from satplan.planners import CompositePolicy, RebalanceInvariants, get_planner
 from satplan.r3_planner import ProblemBuilder, R3RuntimePlanner
 from satplan.r3_solver import R3NodeSpec, R3Problem, R3RequestSpec, R3Solver, R3TierSpec
 from satplan.trace import SCHEMA, Trace
 from satplan.world import CoWorld, Request
-from test_p0_p2_consistency import _base_cfg
 
 
 def test_p3_no_fake_scaling_real_remaining_and_deadline() -> None:
