@@ -595,6 +595,7 @@ class ProblemBuilder:
                     kv_bytes_per_req=entry.kv_bytes_per_req,
                     deadline_s=entry.deadline_s,
                     weight=entry.weight,
+                    arrival_offset_s=max(0.0, entry.arrival_time_s - view.now),
                 )
             )
         return tuple(specs)

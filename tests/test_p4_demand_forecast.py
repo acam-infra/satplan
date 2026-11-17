@@ -232,3 +232,55 @@ def test_p4_yaml_config_and_runner_wiring() -> None:
     assert pl_on.builder.demand_forecast.enabled is True
     res = run_simulation(tr, cfg_on, placer="nearest", planner="r3_milp", seed=1)
     assert res.metrics["n_req"] > 0
+
+
+@pytest.mark.parametrize(("abs_deadline", "expect_pred_complete"), [(65.0, False), (95.0, True)])
+def test_p4_intra_slot_arrival_service_gate(abs_deadline: float, expect_pred_complete: bool) -> None:
+    """R4-A: predicted demand arriving mid-coarse-slot cannot be served before its arrival_time_s."""
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "p4-arrival-gate",
+        "horizon_s": 140.0,
+        "nodes": [{"id": 0, "role": "rs"}, {"id": 1, "role": "compute"}],
+        "edges": [{"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 140.0]]}],
+        "dark": [[], []],
+    })
+    cfg = _base_cfg()
+    cfg["control_period_s"] = 2.0
+    # Fastest tier rate = 1 / t_fixed_s = 20 tok/s (with t_weights_s=t_kv_tok_s=t_seq_s=0)
+    cfg["gpu"].update(kv_gib=1.0, t_fixed_s=0.05, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+    # Published at t=0: arrives at t=50.0 (inside coarse slot [26, 56)), needs 400 tokens -> earliest finish 70.0s.
+    plan = PublishedDemandPlan(
+        publish_time_s=0.0,
+        arrival_time_s=50.0,
+        origin=0,
+        expected_requests=1.0,
+        tokens_per_req=400.0,
+        kv_bytes_per_req=1e6,
+        deadline_s=abs_deadline - 50.0,
+        weight=1.0,
+    )
+    df_cfg = DemandForecastConfig(enabled=True, obs_window_s=1.0)
+    builder = ProblemBuilder(
+        horizon_slots=4,
+        dt_s=6.0,
+        tail_enabled=True,
+        tail_slots=4,
+        tail_dt_s=30.0,
+        demand_forecast=df_cfg,
+        time_limit_s=5.0,
+    )
+    planner = R3RuntimePlanner(builder=builder)
+    env = simpy.Environment()
+    w = CoWorld(env, tr, cfg, placer=lambda v, r: 1, planner=get_planner("none"), seed=1, published_plans=[plan])
+    # One small current request that finishes quickly without contending with t=50.0.
+    w.submit(Request(0, 0, 0.0, False, 100, 100, 1.0, 20.0))
+    env.run(until=2.0)
+
+    planner.plan(w.forecast_view, RebalanceInvariants.from_cfg(cfg))
+    res = planner.last_result
+    assert res is not None and res.status == "optimal"
+    if expect_pred_complete:
+        assert res.stage1_obj > 1.9
+    else:
+        assert res.stage1_obj < 1.05

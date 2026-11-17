@@ -77,6 +77,7 @@ class R3PredictedDemandSpec:
     kv_bytes_per_req: float
     deadline_s: float
     weight: float = 1.0
+    arrival_offset_s: float | None = None
 
 
 @dataclass(frozen=True)
@@ -1067,7 +1068,16 @@ class R3Solver:
                     if pg is not None and pa is not None:
                         has_p = True
                         p_terms.append((pg, dem.expected_requests))
-                        cb.add([(pg, 1.0), (pa, -max_rate_j * dt_t)], -math.inf, 0.0)
+                        eff_dt_t = dt_t
+                        if dem.arrival_offset_s is not None:
+                            eff_dt_t = max(0.0, min(dt_t, idx.slot_ends[t] - dem.arrival_offset_s))
+                        cb.add([(pg, 1.0), (pa, -max_rate_j * eff_dt_t)], -math.inf, 0.0)
+                        if eff_dt_t < dt_t - 1e-9:
+                            tier_cap = [(pg, 1.0)]
+                            for l_i, rate in enumerate(rates_j):
+                                if rate > 0.0:
+                                    tier_cap.append((idx.z(j, l_i, t), -rate * eff_dt_t))
+                            cb.add(tier_cap, -math.inf, 0.0)
                 if not has_p:
                     continue
                 for l_i in range(idx.L):
