@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
 
 
 def generate_report(raw_dir: Path, out_md: Path) -> None:
