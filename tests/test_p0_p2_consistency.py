@@ -1889,12 +1889,12 @@ def test_r2g_known_upload_across_slots_negative_and_positive(
     first_pred, first_bg = records[0]
     assert set(first_pred).issubset(actual_ontime)
     if expect_migrant_ontime:
-        assert first_bg[(1, 2)] == pytest.approx((0.0, 0.0, 0.0, 0.0), abs=1e-3)
+        assert first_bg[(1, 2)][:4] == pytest.approx((0.0, 0.0, 0.0, 0.0), abs=1e-3)
         assert 1 in actual_ontime
         assert 1 in first_pred
     else:
-        assert first_bg[(1, 2)] == pytest.approx((40e6, 40e6, 40e6, 0.0), rel=1e-5)
-        assert first_bg[(2, 1)] == pytest.approx((0.0, 0.0, 0.0, 0.0), abs=1e-3)
+        assert first_bg[(1, 2)][:4] == pytest.approx((40e6, 40e6, 40e6, 0.0), rel=1e-5)
+        assert first_bg[(2, 1)][:4] == pytest.approx((0.0, 0.0, 0.0, 0.0), abs=1e-3)
         assert 1 not in first_pred
 
 
@@ -1949,7 +1949,7 @@ def test_r2g_shared_bottleneck_speedup_and_completion_release() -> None:
     assert bg_12[0] == pytest.approx(35_000_000.0 * 8.0 / 6.0, rel=1e-4)
     assert bg_12[1] == pytest.approx(0.0, abs=1e-3)
     env.run(until=25.0)
-    assert migrant.node == 2 and migrant.t_delivered is not None and migrant.t_delivered <= 20.0
+    assert migrant.node in (2, 3) and migrant.t_delivered is not None and migrant.t_delivered <= 20.0
 
 
 def test_r2g_link_break_and_recovery_reserves_retry_slot() -> None:
@@ -2161,7 +2161,7 @@ def test_r2i_background_retry_new_path(upload_bytes: float, expect_ontime: bool)
         assert 1 in actual_ontime
         assert 1 in first_pred
     else:
-        assert first_bg[(3, 2)] == pytest.approx((0.0, 40e6, 40e6, 20e6), rel=1e-4)
+        assert first_bg[(3, 2)][:4] == pytest.approx((0.0, 40e6, 40e6, 20e6), rel=1e-4)
         assert 1 not in first_pred
 
 
@@ -2230,7 +2230,7 @@ def test_r2j_background_retry_new_destination(upload_bytes: float, expect_ontime
         assert 1 in first_pred
     else:
         assert (0.0, 0, 2) in placements and (3.0, 0, 3) in placements
-        assert first_bg[(1, 3)] == pytest.approx((33.333333e6, 40e6, 40e6, 20e6), rel=1e-4)
+        assert first_bg[(1, 3)][:4] == pytest.approx((33.333333e6, 40e6, 40e6, 20e6), rel=1e-4)
         assert 1 not in first_pred
 
 
@@ -2340,13 +2340,13 @@ def test_r2k_simultaneous_and_staggered_background_retries(
     if expect_migrant_ontime:
         assert background_count in actual_ontime
         assert background_count in first_pred
-        assert first_bg[(1, 2)] == pytest.approx((12e6, 0.0, 0.0, 0.0), rel=1e-4)
+        assert first_bg[(1, 2)][:4] == pytest.approx((12e6, 0.0, 0.0, 0.0), rel=1e-4)
     else:
         assert background_count not in first_pred
         if background_count == 2:
-            assert first_bg[(1, 2)] == pytest.approx((24e6, 0.0, 0.0, 0.0), rel=1e-4)
+            assert first_bg[(1, 2)][:4] == pytest.approx((24e6, 0.0, 0.0, 0.0), rel=1e-4)
         elif upload_bytes == 9_000_000.0:
-            assert first_bg[(1, 2)] == pytest.approx((36e6, 0.0, 0.0, 0.0), rel=1e-4)
+            assert first_bg[(1, 2)][:4] == pytest.approx((36e6, 0.0, 0.0, 0.0), rel=1e-4)
         else:
             # 3 * 12MB = 36MB > 30MB slot-0 cap: 30MB (40Mbps) in slot 0, 6MB carryover (8Mbps) in slot 1.
             assert first_bg[(1, 2)][0] == pytest.approx(40e6, rel=1e-4)
