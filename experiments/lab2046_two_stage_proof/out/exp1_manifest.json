@@ -1,0 +1,5 @@
+{
+  "pre_run_head_sha": "65cc046d65df17619c7a17c89e411f8e85313e54",
+  "runner_sha256": "8a334004e27906ef76145772479bfffd00043e11968ed5ff179564c3656810a3",
+  "rerun_cmd": "PYTHONPATH=. uv run --frozen python experiments/lab2046_two_stage_proof/exp1_single_placement_limit.py"
+}

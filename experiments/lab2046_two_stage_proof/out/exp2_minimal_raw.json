@@ -1,0 +1,1171 @@
+[
+  {
+    "arm": "Solo_1_Mig",
+    "metrics": {
+      "n_req": 1,
+      "n_long": 1,
+      "delivered": 1,
+      "good": 1,
+      "good_long": 1,
+      "good_frac": 1.0,
+      "good_long_frac": 1.0,
+      "goodput_tok_s": 600.0,
+      "badput_tok_s": 0.0,
+      "waste_ratio": 0.0,
+      "undelivered_frac": 0.0,
+      "e2e_p95_all_s": 85.65822614789954,
+      "long_p95_all_s": 85.65822614789954,
+      "peak_temp_C": 76.5482003318991,
+      "energy_kj": 24.0,
+      "zero_power_s": 514.0,
+      "dod_exhausted_s": 0.0,
+      "upload_fail": 0,
+      "link_GB_hops": 0.3757008854961832
+    },
+    "mig_stats": {
+      "mig_count": 1,
+      "mig_done_p95_s": 5.859999999999999
+    },
+    "peak_mig_flows_e1": 1,
+    "bn_timeline": [
+      {
+        "t": 48.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 50.0,
+        "mig_flows_e1": 1,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 365.7
+      },
+      {
+        "t": 52.0,
+        "mig_flows_e1": 1,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 62.5,
+        "total_mig_rem_MB": 240.7
+      },
+      {
+        "t": 54.0,
+        "mig_flows_e1": 1,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 62.5,
+        "total_mig_rem_MB": 115.7
+      },
+      {
+        "t": 56.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 58.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 60.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 62.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 64.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 66.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 68.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 70.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 72.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 74.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 76.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 78.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 80.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 82.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 84.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 86.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 88.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 90.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      }
+    ],
+    "requests": [
+      [
+        0,
+        0,
+        1,
+        0.0,
+        0.0,
+        85.7,
+        85.7,
+        1,
+        [
+          1,
+          2
+        ]
+      ]
+    ]
+  },
+  {
+    "arm": "B_none",
+    "metrics": {
+      "n_req": 4,
+      "n_long": 4,
+      "delivered": 0,
+      "good": 0,
+      "good_long": 0,
+      "good_frac": 0.0,
+      "good_long_frac": 0.0,
+      "goodput_tok_s": 0.0,
+      "badput_tok_s": 1624.2936286386619,
+      "waste_ratio": 1.0,
+      "undelivered_frac": 1.0,
+      "e2e_p95_all_s": 199.85,
+      "long_p95_all_s": 199.85,
+      "peak_temp_C": 77.50651413436913,
+      "energy_kj": 15.8,
+      "zero_power_s": 532.0,
+      "dod_exhausted_s": 136.0,
+      "upload_fail": 0,
+      "link_GB_hops": 0.04
+    },
+    "mig_stats": {
+      "mig_count": 0,
+      "mig_done_p95_s": null
+    },
+    "peak_mig_flows_e1": 0,
+    "bn_timeline": [
+      {
+        "t": 48.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 50.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 52.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 54.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 56.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 58.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 60.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 62.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 64.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 66.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 68.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 70.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 72.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 74.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 76.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 78.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 80.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 82.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 84.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 86.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 88.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 90.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      }
+    ],
+    "requests": [
+      [
+        0,
+        0,
+        1,
+        0.0,
+        0.0,
+        null,
+        null,
+        0,
+        [
+          1
+        ]
+      ],
+      [
+        1,
+        0,
+        1,
+        1.0,
+        1.0,
+        null,
+        null,
+        0,
+        [
+          1
+        ]
+      ],
+      [
+        2,
+        0,
+        1,
+        2.0,
+        2.0,
+        null,
+        null,
+        0,
+        [
+          1
+        ]
+      ],
+      [
+        3,
+        0,
+        1,
+        3.0,
+        3.0,
+        null,
+        null,
+        0,
+        [
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "arm": "Simple_Greedy",
+    "metrics": {
+      "n_req": 4,
+      "n_long": 4,
+      "delivered": 4,
+      "good": 0,
+      "good_long": 0,
+      "good_frac": 0.0,
+      "good_long_frac": 0.0,
+      "goodput_tok_s": 0.0,
+      "badput_tok_s": 2400.0,
+      "waste_ratio": 1.0,
+      "undelivered_frac": 0.0,
+      "e2e_p95_all_s": 109.07745830244437,
+      "long_p95_all_s": 109.07745830244437,
+      "peak_temp_C": 76.5482003318991,
+      "energy_kj": 26.4,
+      "zero_power_s": 506.0,
+      "dod_exhausted_s": 0.0,
+      "upload_fail": 0,
+      "link_GB_hops": 1.5313368873270576
+    },
+    "mig_stats": {
+      "mig_count": 4,
+      "mig_done_p95_s": 23.846000000000004
+    },
+    "peak_mig_flows_e1": 4,
+    "bn_timeline": [
+      {
+        "t": 48.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 50.0,
+        "mig_flows_e1": 4,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 1491.3
+      },
+      {
+        "t": 52.0,
+        "mig_flows_e1": 4,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 15.62,
+        "total_mig_rem_MB": 1366.3
+      },
+      {
+        "t": 54.0,
+        "mig_flows_e1": 4,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 15.62,
+        "total_mig_rem_MB": 1241.3
+      },
+      {
+        "t": 56.0,
+        "mig_flows_e1": 4,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 15.62,
+        "total_mig_rem_MB": 1116.3
+      },
+      {
+        "t": 58.0,
+        "mig_flows_e1": 4,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 15.62,
+        "total_mig_rem_MB": 991.3
+      },
+      {
+        "t": 60.0,
+        "mig_flows_e1": 4,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 15.62,
+        "total_mig_rem_MB": 866.3
+      },
+      {
+        "t": 62.0,
+        "mig_flows_e1": 4,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 15.62,
+        "total_mig_rem_MB": 741.3
+      },
+      {
+        "t": 64.0,
+        "mig_flows_e1": 4,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 15.62,
+        "total_mig_rem_MB": 616.3
+      },
+      {
+        "t": 66.0,
+        "mig_flows_e1": 4,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 15.62,
+        "total_mig_rem_MB": 491.3
+      },
+      {
+        "t": 68.0,
+        "mig_flows_e1": 4,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 15.62,
+        "total_mig_rem_MB": 366.3
+      },
+      {
+        "t": 70.0,
+        "mig_flows_e1": 4,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 15.62,
+        "total_mig_rem_MB": 241.3
+      },
+      {
+        "t": 72.0,
+        "mig_flows_e1": 4,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 15.62,
+        "total_mig_rem_MB": 116.3
+      },
+      {
+        "t": 74.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 76.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 78.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 80.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 82.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 84.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 86.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 88.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 90.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      }
+    ],
+    "requests": [
+      [
+        0,
+        0,
+        1,
+        0.0,
+        0.0,
+        109.1,
+        109.1,
+        0,
+        [
+          1,
+          2
+        ]
+      ],
+      [
+        1,
+        0,
+        1,
+        1.0,
+        1.0,
+        110.1,
+        110.1,
+        0,
+        [
+          1,
+          2
+        ]
+      ],
+      [
+        2,
+        0,
+        1,
+        2.0,
+        2.0,
+        110.8,
+        110.8,
+        0,
+        [
+          1,
+          2
+        ]
+      ],
+      [
+        3,
+        0,
+        1,
+        3.0,
+        3.0,
+        111.4,
+        111.4,
+        0,
+        [
+          1,
+          2
+        ]
+      ]
+    ]
+  },
+  {
+    "arm": "Diag_NoShare",
+    "metrics": {
+      "n_req": 4,
+      "n_long": 4,
+      "delivered": 4,
+      "good": 4,
+      "good_long": 4,
+      "good_frac": 1.0,
+      "good_long_frac": 1.0,
+      "goodput_tok_s": 2400.0,
+      "badput_tok_s": 0.0,
+      "waste_ratio": 0.0,
+      "undelivered_frac": 0.0,
+      "e2e_p95_all_s": 91.40883914178133,
+      "long_p95_all_s": 91.40883914178133,
+      "peak_temp_C": 76.5482003318991,
+      "energy_kj": 27.0,
+      "zero_power_s": 504.0,
+      "dod_exhausted_s": 0.0,
+      "upload_fail": 0,
+      "link_GB_hops": 1.5313368873270572
+    },
+    "mig_stats": {
+      "mig_count": 4,
+      "mig_done_p95_s": 6.186
+    },
+    "peak_mig_flows_e1": 4,
+    "bn_timeline": [
+      {
+        "t": 48.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 50.0,
+        "mig_flows_e1": 4,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 1491.3
+      },
+      {
+        "t": 52.0,
+        "mig_flows_e1": 4,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 62.5,
+        "total_mig_rem_MB": 991.3
+      },
+      {
+        "t": 54.0,
+        "mig_flows_e1": 4,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 62.5,
+        "total_mig_rem_MB": 491.3
+      },
+      {
+        "t": 56.0,
+        "mig_flows_e1": 2,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 62.5,
+        "total_mig_rem_MB": 15.5
+      },
+      {
+        "t": 58.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 60.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 62.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 64.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 66.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 68.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 70.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 72.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 74.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 76.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 78.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 80.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 82.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 84.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 86.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 88.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 90.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      }
+    ],
+    "requests": [
+      [
+        0,
+        0,
+        1,
+        0.0,
+        0.0,
+        91.4,
+        91.4,
+        1,
+        [
+          1,
+          2
+        ]
+      ],
+      [
+        1,
+        0,
+        1,
+        1.0,
+        1.0,
+        92.4,
+        92.4,
+        1,
+        [
+          1,
+          2
+        ]
+      ],
+      [
+        2,
+        0,
+        1,
+        2.0,
+        2.0,
+        93.3,
+        93.3,
+        1,
+        [
+          1,
+          2
+        ]
+      ],
+      [
+        3,
+        0,
+        1,
+        3.0,
+        3.0,
+        94.2,
+        94.2,
+        1,
+        [
+          1,
+          2
+        ]
+      ]
+    ]
+  },
+  {
+    "arm": "CommAware_Spread",
+    "metrics": {
+      "n_req": 4,
+      "n_long": 4,
+      "delivered": 4,
+      "good": 4,
+      "good_long": 4,
+      "good_frac": 1.0,
+      "good_long_frac": 1.0,
+      "goodput_tok_s": 2400.0,
+      "badput_tok_s": 0.0,
+      "waste_ratio": 0.0,
+      "undelivered_frac": 0.0,
+      "e2e_p95_all_s": 94.9498827580101,
+      "long_p95_all_s": 94.9498827580101,
+      "peak_temp_C": 76.5482003318991,
+      "energy_kj": 36.6,
+      "zero_power_s": 472.0,
+      "dod_exhausted_s": 0.0,
+      "upload_fail": 0,
+      "link_GB_hops": 1.5313368873270574
+    },
+    "mig_stats": {
+      "mig_count": 4,
+      "mig_done_p95_s": 12.043500000000003
+    },
+    "peak_mig_flows_e1": 2,
+    "bn_timeline": [
+      {
+        "t": 48.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 50.0,
+        "mig_flows_e1": 2,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 755.6
+      },
+      {
+        "t": 52.0,
+        "mig_flows_e1": 2,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 31.25,
+        "total_mig_rem_MB": 630.6
+      },
+      {
+        "t": 54.0,
+        "mig_flows_e1": 2,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 31.25,
+        "total_mig_rem_MB": 505.6
+      },
+      {
+        "t": 56.0,
+        "mig_flows_e1": 2,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 31.25,
+        "total_mig_rem_MB": 380.6
+      },
+      {
+        "t": 58.0,
+        "mig_flows_e1": 2,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 31.25,
+        "total_mig_rem_MB": 255.6
+      },
+      {
+        "t": 60.0,
+        "mig_flows_e1": 2,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 31.25,
+        "total_mig_rem_MB": 130.6
+      },
+      {
+        "t": 62.0,
+        "mig_flows_e1": 1,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 62.5,
+        "total_mig_rem_MB": 5.6
+      },
+      {
+        "t": 64.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 66.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 68.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 70.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 72.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 74.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 76.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 78.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 80.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 82.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 84.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 86.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 88.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      },
+      {
+        "t": 90.0,
+        "mig_flows_e1": 0,
+        "up_flows_e1": 0,
+        "per_flow_MBps": 0.0,
+        "total_mig_rem_MB": 0.0
+      }
+    ],
+    "requests": [
+      [
+        0,
+        0,
+        1,
+        0.0,
+        0.0,
+        95.0,
+        95.0,
+        1,
+        [
+          1,
+          2
+        ]
+      ],
+      [
+        1,
+        0,
+        1,
+        1.0,
+        1.0,
+        95.7,
+        95.7,
+        1,
+        [
+          1,
+          3
+        ]
+      ],
+      [
+        2,
+        0,
+        1,
+        2.0,
+        2.0,
+        96.7,
+        96.7,
+        1,
+        [
+          1,
+          2
+        ]
+      ],
+      [
+        3,
+        0,
+        1,
+        3.0,
+        3.0,
+        97.5,
+        97.5,
+        1,
+        [
+          1,
+          3
+        ]
+      ]
+    ]
+  }
+]

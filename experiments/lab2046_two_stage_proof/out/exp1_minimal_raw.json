@@ -1,0 +1,2690 @@
+[
+  {
+    "arm": "Single_CS1",
+    "metrics": {
+      "n_req": 1,
+      "n_long": 1,
+      "delivered": 1,
+      "good": 0,
+      "good_long": 0,
+      "good_frac": 0.0,
+      "good_long_frac": 0.0,
+      "goodput_tok_s": 0.0,
+      "badput_tok_s": 525.0,
+      "waste_ratio": 1.0,
+      "undelivered_frac": 0.0,
+      "e2e_p95_all_s": 263.0446875169341,
+      "long_p95_all_s": 263.0446875169341,
+      "peak_temp_C": 84.76335360308524,
+      "energy_kj": 41.24,
+      "zero_power_s": 452.0,
+      "dod_exhausted_s": 118.0,
+      "upload_fail": 0,
+      "link_GB_hops": 0.05
+    },
+    "requests": [
+      [
+        0,
+        0,
+        1,
+        0.0,
+        0.1,
+        263.0,
+        263.0,
+        0,
+        [
+          1
+        ]
+      ]
+    ],
+    "timeline": [
+      {
+        "t": 0,
+        "node": -1,
+        "state": "wait",
+        "gen_tok": 0.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 25.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 25.0
+      },
+      {
+        "t": 10.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 0.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 38.4,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 24.0
+      },
+      {
+        "t": 20.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 0.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 51.7,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 23.1
+      },
+      {
+        "t": 30.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 0.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 61.8,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 22.4
+      },
+      {
+        "t": 40.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 2290.1,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 69.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 21.8
+      },
+      {
+        "t": 50.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 2290.1,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 75.5,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 21.4
+      },
+      {
+        "t": 60.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 2290.1,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 80.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 21.1
+      },
+      {
+        "t": 70.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 4540.8,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 83.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 20.8
+      },
+      {
+        "t": 80.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 5506.7,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 83.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 20.6
+      },
+      {
+        "t": 90.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6501.0,
+        "cs1_f": 0.35,
+        "cs1_ecl": true,
+        "cs1_T": 84.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 20.5
+      },
+      {
+        "t": 100.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6673.1,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 69.5,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.4
+      },
+      {
+        "t": 110.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6673.1,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 57.9,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.3
+      },
+      {
+        "t": 120.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6673.1,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 49.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.2
+      },
+      {
+        "t": 130.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6673.1,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 42.3,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.2
+      },
+      {
+        "t": 140.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6673.1,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 37.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.1
+      },
+      {
+        "t": 150.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6673.1,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 33.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.1
+      },
+      {
+        "t": 160.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6673.1,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 30.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.1
+      },
+      {
+        "t": 170.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6673.1,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 27.7,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.1
+      },
+      {
+        "t": 180.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6673.1,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 25.9,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 190.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6673.1,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 24.5,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 200.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6673.1,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 23.4,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 210.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6673.1,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 22.5,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 220.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6673.1,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 36.4,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 230.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6673.1,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 50.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 240.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6673.1,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 60.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 250.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 8852.2,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 68.7,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 260.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 8852.2,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 74.8,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 270.0,
+        "node": 1,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 68.5,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 280.0,
+        "node": 1,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 57.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 290.0,
+        "node": 1,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 48.4,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      }
+    ],
+    "events": [
+      [
+        0,
+        "arrive",
+        {
+          "req": 0,
+          "o": 0,
+          "long": true
+        }
+      ],
+      [
+        0,
+        "upload",
+        {
+          "req": 0,
+          "path": [
+            0,
+            1
+          ]
+        }
+      ],
+      [
+        0.09,
+        "admit",
+        {
+          "req": 0,
+          "node": 1
+        }
+      ],
+      [
+        263.04,
+        "deliver",
+        {
+          "req": 0,
+          "node": 1,
+          "o": 0,
+          "path": [
+            1
+          ]
+        }
+      ]
+    ]
+  },
+  {
+    "arm": "Single_CS2",
+    "metrics": {
+      "n_req": 1,
+      "n_long": 1,
+      "delivered": 1,
+      "good": 0,
+      "good_long": 0,
+      "good_frac": 0.0,
+      "good_long_frac": 0.0,
+      "goodput_tok_s": 0.0,
+      "badput_tok_s": 525.0,
+      "waste_ratio": 1.0,
+      "undelivered_frac": 0.0,
+      "e2e_p95_all_s": 227.60538144437245,
+      "long_p95_all_s": 227.60538144437245,
+      "peak_temp_C": 84.98765161226248,
+      "energy_kj": 37.5,
+      "zero_power_s": 443.0,
+      "dod_exhausted_s": 73.0,
+      "upload_fail": 0,
+      "link_GB_hops": 0.05
+    },
+    "requests": [
+      [
+        0,
+        0,
+        1,
+        0.0,
+        0.1,
+        227.6,
+        227.6,
+        0,
+        [
+          2
+        ]
+      ]
+    ],
+    "timeline": [
+      {
+        "t": 0,
+        "node": -1,
+        "state": "wait",
+        "gen_tok": 0.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 25.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 25.0
+      },
+      {
+        "t": 10.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 146.2,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 24.0,
+        "cs2_f": 0.35,
+        "cs2_ecl": true,
+        "cs2_T": 28.1
+      },
+      {
+        "t": 20.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 146.2,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 23.1,
+        "cs2_f": 0.35,
+        "cs2_ecl": true,
+        "cs2_T": 27.4
+      },
+      {
+        "t": 30.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1053.7,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 22.4,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 26.1
+      },
+      {
+        "t": 40.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1053.7,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 21.8,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 24.7
+      },
+      {
+        "t": 50.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1053.7,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 21.4,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 23.6
+      },
+      {
+        "t": 60.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1053.7,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 21.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 22.7
+      },
+      {
+        "t": 70.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1053.7,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.8,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 22.1
+      },
+      {
+        "t": 80.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1053.7,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 21.6
+      },
+      {
+        "t": 90.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1053.7,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.5,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 21.2
+      },
+      {
+        "t": 100.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1053.7,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.4,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 26.7
+      },
+      {
+        "t": 110.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1053.7,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.3,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 42.7
+      },
+      {
+        "t": 120.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1053.7,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.2,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 54.9
+      },
+      {
+        "t": 130.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 3325.5,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.2,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 64.3
+      },
+      {
+        "t": 140.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 3325.5,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.1,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 71.5
+      },
+      {
+        "t": 150.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 3325.5,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.1,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 77.0
+      },
+      {
+        "t": 160.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 5558.9,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.1,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 81.2
+      },
+      {
+        "t": 170.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 5558.9,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.1,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 84.4
+      },
+      {
+        "t": 180.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 6743.3,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.0,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 83.8
+      },
+      {
+        "t": 190.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 7554.7,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.0,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 83.2
+      },
+      {
+        "t": 200.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 8361.3,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.0,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 82.5
+      },
+      {
+        "t": 210.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 9163.2,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 81.8
+      },
+      {
+        "t": 220.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 9876.7,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 0.35,
+        "cs2_ecl": false,
+        "cs2_T": 84.9
+      },
+      {
+        "t": 230.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 80.4
+      },
+      {
+        "t": 240.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 66.3
+      },
+      {
+        "t": 250.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 55.4
+      },
+      {
+        "t": 260.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 47.1
+      },
+      {
+        "t": 270.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 40.8
+      },
+      {
+        "t": 280.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 35.9
+      },
+      {
+        "t": 290.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 32.2
+      }
+    ],
+    "events": [
+      [
+        0,
+        "arrive",
+        {
+          "req": 0,
+          "o": 0,
+          "long": true
+        }
+      ],
+      [
+        0,
+        "upload",
+        {
+          "req": 0,
+          "path": [
+            0,
+            2
+          ]
+        }
+      ],
+      [
+        0.09,
+        "admit",
+        {
+          "req": 0,
+          "node": 2
+        }
+      ],
+      [
+        227.61,
+        "deliver",
+        {
+          "req": 0,
+          "node": 2,
+          "o": 0,
+          "path": [
+            2
+          ]
+        }
+      ]
+    ]
+  },
+  {
+    "arm": "Single_Upper_CS1_0up",
+    "metrics": {
+      "n_req": 1,
+      "n_long": 1,
+      "delivered": 1,
+      "good": 0,
+      "good_long": 0,
+      "good_frac": 0.0,
+      "good_long_frac": 0.0,
+      "goodput_tok_s": 0.0,
+      "badput_tok_s": 525.0,
+      "waste_ratio": 1.0,
+      "undelivered_frac": 0.0,
+      "e2e_p95_all_s": 262.96515611934126,
+      "long_p95_all_s": 262.96515611934126,
+      "peak_temp_C": 84.76335360308524,
+      "energy_kj": 41.24,
+      "zero_power_s": 452.0,
+      "dod_exhausted_s": 118.0,
+      "upload_fail": 0,
+      "link_GB_hops": 0.0
+    },
+    "requests": [
+      [
+        0,
+        0,
+        1,
+        0.0,
+        0.0,
+        263.0,
+        263.0,
+        0,
+        [
+          1
+        ]
+      ]
+    ],
+    "timeline": [
+      {
+        "t": 0,
+        "node": -1,
+        "state": "wait",
+        "gen_tok": 0.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 25.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 25.0
+      },
+      {
+        "t": 10.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 0.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 38.4,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 24.0
+      },
+      {
+        "t": 20.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 0.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 51.7,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 23.1
+      },
+      {
+        "t": 30.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 0.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 61.8,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 22.4
+      },
+      {
+        "t": 40.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 2290.1,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 69.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 21.8
+      },
+      {
+        "t": 50.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 2290.1,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 75.5,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 21.4
+      },
+      {
+        "t": 60.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 2290.1,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 80.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 21.1
+      },
+      {
+        "t": 70.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 4540.8,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 83.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 20.8
+      },
+      {
+        "t": 80.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 5512.6,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 83.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 20.6
+      },
+      {
+        "t": 90.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6506.8,
+        "cs1_f": 0.35,
+        "cs1_ecl": true,
+        "cs1_T": 84.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 20.5
+      },
+      {
+        "t": 100.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6679.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 69.5,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.4
+      },
+      {
+        "t": 110.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6679.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 57.9,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.3
+      },
+      {
+        "t": 120.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6679.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 49.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.2
+      },
+      {
+        "t": 130.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6679.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 42.3,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.2
+      },
+      {
+        "t": 140.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6679.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 37.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.1
+      },
+      {
+        "t": 150.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6679.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 33.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.1
+      },
+      {
+        "t": 160.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6679.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 30.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.1
+      },
+      {
+        "t": 170.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6679.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 27.7,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.1
+      },
+      {
+        "t": 180.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6679.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 25.9,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 190.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6679.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 24.5,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 200.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6679.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 23.4,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 210.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6679.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 22.5,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 220.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6679.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 36.4,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 230.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6679.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 50.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 240.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 6679.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 60.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 250.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 8858.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 68.7,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 260.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 8858.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 74.8,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 270.0,
+        "node": 1,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 68.5,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 280.0,
+        "node": 1,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 57.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      },
+      {
+        "t": 290.0,
+        "node": 1,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 48.4,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 20.0
+      }
+    ],
+    "events": [
+      [
+        0,
+        "arrive",
+        {
+          "req": 0,
+          "o": 0,
+          "long": true
+        }
+      ],
+      [
+        0,
+        "upload",
+        {
+          "req": 0,
+          "path": [
+            0,
+            1
+          ]
+        }
+      ],
+      [
+        0.01,
+        "admit",
+        {
+          "req": 0,
+          "node": 1
+        }
+      ],
+      [
+        262.97,
+        "deliver",
+        {
+          "req": 0,
+          "node": 1,
+          "o": 0,
+          "path": [
+            1
+          ]
+        }
+      ]
+    ]
+  },
+  {
+    "arm": "Single_Upper_CS2_0up",
+    "metrics": {
+      "n_req": 1,
+      "n_long": 1,
+      "delivered": 1,
+      "good": 0,
+      "good_long": 0,
+      "good_frac": 0.0,
+      "good_long_frac": 0.0,
+      "goodput_tok_s": 0.0,
+      "badput_tok_s": 525.0,
+      "waste_ratio": 1.0,
+      "undelivered_frac": 0.0,
+      "e2e_p95_all_s": 227.5257503316897,
+      "long_p95_all_s": 227.5257503316897,
+      "peak_temp_C": 84.98765161226248,
+      "energy_kj": 37.5,
+      "zero_power_s": 443.0,
+      "dod_exhausted_s": 73.0,
+      "upload_fail": 0,
+      "link_GB_hops": 0.0
+    },
+    "requests": [
+      [
+        0,
+        0,
+        1,
+        0.0,
+        0.0,
+        227.5,
+        227.5,
+        0,
+        [
+          2
+        ]
+      ]
+    ],
+    "timeline": [
+      {
+        "t": 0,
+        "node": -1,
+        "state": "wait",
+        "gen_tok": 0.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 25.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 25.0
+      },
+      {
+        "t": 10.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 152.3,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 24.0,
+        "cs2_f": 0.35,
+        "cs2_ecl": true,
+        "cs2_T": 28.1
+      },
+      {
+        "t": 20.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 152.3,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 23.1,
+        "cs2_f": 0.35,
+        "cs2_ecl": true,
+        "cs2_T": 27.4
+      },
+      {
+        "t": 30.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1059.8,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 22.4,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 26.1
+      },
+      {
+        "t": 40.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1059.8,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 21.8,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 24.7
+      },
+      {
+        "t": 50.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1059.8,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 21.4,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 23.6
+      },
+      {
+        "t": 60.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1059.8,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 21.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 22.7
+      },
+      {
+        "t": 70.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1059.8,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.8,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 22.1
+      },
+      {
+        "t": 80.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1059.8,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 21.6
+      },
+      {
+        "t": 90.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1059.8,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.5,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 21.2
+      },
+      {
+        "t": 100.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1059.8,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.4,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 26.7
+      },
+      {
+        "t": 110.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1059.8,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.3,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 42.7
+      },
+      {
+        "t": 120.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 1059.8,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.2,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 54.9
+      },
+      {
+        "t": 130.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 3331.5,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.2,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 64.3
+      },
+      {
+        "t": 140.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 3331.5,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.1,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 71.5
+      },
+      {
+        "t": 150.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 3331.5,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.1,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 77.0
+      },
+      {
+        "t": 160.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 5564.7,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.1,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 81.2
+      },
+      {
+        "t": 170.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 5564.7,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.1,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 84.4
+      },
+      {
+        "t": 180.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 6749.1,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.0,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 83.8
+      },
+      {
+        "t": 190.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 7560.5,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.0,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 83.2
+      },
+      {
+        "t": 200.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 8367.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 20.0,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 82.5
+      },
+      {
+        "t": 210.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 9168.9,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 81.8
+      },
+      {
+        "t": 220.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 9882.3,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 0.35,
+        "cs2_ecl": false,
+        "cs2_T": 84.9
+      },
+      {
+        "t": 230.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 80.4
+      },
+      {
+        "t": 240.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 66.3
+      },
+      {
+        "t": 250.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 55.4
+      },
+      {
+        "t": 260.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 47.1
+      },
+      {
+        "t": 270.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 40.8
+      },
+      {
+        "t": 280.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 35.9
+      },
+      {
+        "t": 290.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 32.2
+      }
+    ],
+    "events": [
+      [
+        0,
+        "arrive",
+        {
+          "req": 0,
+          "o": 0,
+          "long": true
+        }
+      ],
+      [
+        0,
+        "upload",
+        {
+          "req": 0,
+          "path": [
+            0,
+            2
+          ]
+        }
+      ],
+      [
+        0.01,
+        "admit",
+        {
+          "req": 0,
+          "node": 2
+        }
+      ],
+      [
+        227.53,
+        "deliver",
+        {
+          "req": 0,
+          "node": 2,
+          "o": 0,
+          "path": [
+            2
+          ]
+        }
+      ]
+    ]
+  },
+  {
+    "arm": "Dynamic_RealMig",
+    "metrics": {
+      "n_req": 1,
+      "n_long": 1,
+      "delivered": 1,
+      "good": 1,
+      "good_long": 1,
+      "good_frac": 1.0,
+      "good_long_frac": 1.0,
+      "goodput_tok_s": 525.0,
+      "badput_tok_s": 0.0,
+      "waste_ratio": 0.0,
+      "undelivered_frac": 0.0,
+      "e2e_p95_all_s": 150.85584263908208,
+      "long_p95_all_s": 150.85584263908208,
+      "peak_temp_C": 84.73751265087546,
+      "energy_kj": 40.72,
+      "zero_power_s": 450.0,
+      "dod_exhausted_s": 0.0,
+      "upload_fail": 0,
+      "link_GB_hops": 0.837313722963277
+    },
+    "requests": [
+      [
+        0,
+        0,
+        1,
+        0.0,
+        0.1,
+        150.9,
+        150.9,
+        1,
+        [
+          1,
+          2
+        ]
+      ]
+    ],
+    "timeline": [
+      {
+        "t": 0,
+        "node": -1,
+        "state": "wait",
+        "gen_tok": 0.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 25.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 25.0
+      },
+      {
+        "t": 10.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 0.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 38.4,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 24.0
+      },
+      {
+        "t": 20.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 0.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 51.7,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 23.1
+      },
+      {
+        "t": 30.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 0.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 61.8,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 22.4
+      },
+      {
+        "t": 40.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 2290.1,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 69.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 21.8
+      },
+      {
+        "t": 50.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 2290.1,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 75.5,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 21.4
+      },
+      {
+        "t": 60.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 2290.1,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 80.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 21.1
+      },
+      {
+        "t": 70.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 4540.8,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 83.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 20.8
+      },
+      {
+        "t": 80.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 5506.7,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 83.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 20.6
+      },
+      {
+        "t": 90.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 6077.4,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 71.4,
+        "cs2_f": 0.35,
+        "cs2_ecl": true,
+        "cs2_T": 24.4
+      },
+      {
+        "t": 100.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 6466.2,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 59.4,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 29.9
+      },
+      {
+        "t": 110.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 6466.2,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 50.1,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 45.2
+      },
+      {
+        "t": 120.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 6466.2,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 43.1,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 56.8
+      },
+      {
+        "t": 130.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 8648.5,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 37.7,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 65.8
+      },
+      {
+        "t": 140.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 8648.5,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 33.5,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 72.6
+      },
+      {
+        "t": 150.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 8648.5,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 30.4,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 77.9
+      },
+      {
+        "t": 160.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 27.9,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 67.5
+      },
+      {
+        "t": 170.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 26.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 56.3
+      },
+      {
+        "t": 180.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 24.7,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 47.8
+      },
+      {
+        "t": 190.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 23.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 41.3
+      },
+      {
+        "t": 200.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 22.7,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 36.3
+      },
+      {
+        "t": 210.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 22.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 32.5
+      },
+      {
+        "t": 220.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 21.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 29.6
+      },
+      {
+        "t": 230.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 21.2,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 27.3
+      },
+      {
+        "t": 240.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.9,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 25.6
+      },
+      {
+        "t": 250.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.7,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 24.3
+      },
+      {
+        "t": 260.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 23.3
+      },
+      {
+        "t": 270.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.4,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 22.5
+      },
+      {
+        "t": 280.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.3,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 21.9
+      },
+      {
+        "t": 290.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.2,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 21.5
+      }
+    ],
+    "events": [
+      [
+        0,
+        "arrive",
+        {
+          "req": 0,
+          "o": 0,
+          "long": true
+        }
+      ],
+      [
+        0,
+        "upload",
+        {
+          "req": 0,
+          "path": [
+            0,
+            1
+          ]
+        }
+      ],
+      [
+        0.09,
+        "admit",
+        {
+          "req": 0,
+          "node": 1
+        }
+      ],
+      [
+        80.0,
+        "mig_start",
+        {
+          "req": 0,
+          "src": 1,
+          "dst": 2,
+          "bytes": 787313722.9632775
+        }
+      ],
+      [
+        84.2,
+        "mig_unlock",
+        {
+          "req": 0,
+          "src": 1,
+          "dst": 2
+        }
+      ],
+      [
+        150.86,
+        "deliver",
+        {
+          "req": 0,
+          "node": 2,
+          "o": 0,
+          "path": [
+            2
+          ]
+        }
+      ]
+    ]
+  },
+  {
+    "arm": "Dynamic_ZeroCost",
+    "metrics": {
+      "n_req": 1,
+      "n_long": 1,
+      "delivered": 1,
+      "good": 1,
+      "good_long": 1,
+      "good_frac": 1.0,
+      "good_long_frac": 1.0,
+      "goodput_tok_s": 525.0,
+      "badput_tok_s": 0.0,
+      "waste_ratio": 0.0,
+      "undelivered_frac": 0.0,
+      "e2e_p95_all_s": 148.30195752902858,
+      "long_p95_all_s": 148.30195752902858,
+      "peak_temp_C": 84.73751265087546,
+      "energy_kj": 40.2,
+      "zero_power_s": 448.0,
+      "dod_exhausted_s": 0.0,
+      "upload_fail": 0,
+      "link_GB_hops": 0.05
+    },
+    "requests": [
+      [
+        0,
+        0,
+        1,
+        0.0,
+        0.1,
+        148.3,
+        148.3,
+        1,
+        [
+          1,
+          2
+        ]
+      ]
+    ],
+    "timeline": [
+      {
+        "t": 0,
+        "node": -1,
+        "state": "wait",
+        "gen_tok": 0.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 25.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 25.0
+      },
+      {
+        "t": 10.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 0.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 38.4,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 24.0
+      },
+      {
+        "t": 20.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 0.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 51.7,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 23.1
+      },
+      {
+        "t": 30.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 0.0,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 61.8,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 22.4
+      },
+      {
+        "t": 40.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 2290.1,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 69.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 21.8
+      },
+      {
+        "t": 50.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 2290.1,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 75.5,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 21.4
+      },
+      {
+        "t": 60.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 2290.1,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 80.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 21.1
+      },
+      {
+        "t": 70.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 4540.8,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 83.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 20.8
+      },
+      {
+        "t": 80.0,
+        "node": 1,
+        "state": "decode",
+        "gen_tok": 5506.7,
+        "cs1_f": 1.0,
+        "cs1_ecl": false,
+        "cs1_T": 83.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": true,
+        "cs2_T": 20.6
+      },
+      {
+        "t": 90.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 6092.8,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 71.4,
+        "cs2_f": 0.35,
+        "cs2_ecl": true,
+        "cs2_T": 24.5
+      },
+      {
+        "t": 100.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 6654.2,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 59.4,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 30.0
+      },
+      {
+        "t": 110.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 6654.2,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 50.1,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 45.2
+      },
+      {
+        "t": 120.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 6654.2,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 43.1,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 56.9
+      },
+      {
+        "t": 130.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 8833.6,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 37.7,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 65.8
+      },
+      {
+        "t": 140.0,
+        "node": 2,
+        "state": "decode",
+        "gen_tok": 8833.6,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 33.5,
+        "cs2_f": 1.0,
+        "cs2_ecl": false,
+        "cs2_T": 72.6
+      },
+      {
+        "t": 150.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 30.4,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 77.9
+      },
+      {
+        "t": 160.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 27.9,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 64.3
+      },
+      {
+        "t": 170.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 26.1,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 54.0
+      },
+      {
+        "t": 180.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 24.7,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 46.0
+      },
+      {
+        "t": 190.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 23.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 39.9
+      },
+      {
+        "t": 200.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": true,
+        "cs1_T": 22.7,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 35.3
+      },
+      {
+        "t": 210.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 22.0,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 31.7
+      },
+      {
+        "t": 220.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 21.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 28.9
+      },
+      {
+        "t": 230.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 21.2,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 26.9
+      },
+      {
+        "t": 240.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.9,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 25.3
+      },
+      {
+        "t": 250.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.7,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 24.0
+      },
+      {
+        "t": 260.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.6,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 23.1
+      },
+      {
+        "t": 270.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.4,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 22.4
+      },
+      {
+        "t": 280.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.3,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 21.8
+      },
+      {
+        "t": 290.0,
+        "node": 2,
+        "state": "done",
+        "gen_tok": 10500.0,
+        "cs1_f": 0.0,
+        "cs1_ecl": false,
+        "cs1_T": 20.2,
+        "cs2_f": 0.0,
+        "cs2_ecl": false,
+        "cs2_T": 21.4
+      }
+    ],
+    "events": [
+      [
+        0,
+        "arrive",
+        {
+          "req": 0,
+          "o": 0,
+          "long": true
+        }
+      ],
+      [
+        0,
+        "upload",
+        {
+          "req": 0,
+          "path": [
+            0,
+            1
+          ]
+        }
+      ],
+      [
+        0.09,
+        "admit",
+        {
+          "req": 0,
+          "node": 1
+        }
+      ],
+      [
+        80.0,
+        "mig_atomic",
+        {
+          "req": 0,
+          "src": 1,
+          "dst": 2
+        }
+      ],
+      [
+        148.3,
+        "deliver",
+        {
+          "req": 0,
+          "node": 2,
+          "o": 0,
+          "path": [
+            2
+          ]
+        }
+      ]
+    ]
+  }
+]

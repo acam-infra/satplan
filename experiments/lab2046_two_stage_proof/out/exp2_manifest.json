@@ -1,0 +1,5 @@
+{
+  "pre_run_head_sha": "65cc046d65df17619c7a17c89e411f8e85313e54",
+  "runner_sha256": "e50eaf2bf65075e99dad7b0c31745bb3caaf1477c1aaa27896593392428e6499",
+  "rerun_cmd": "PYTHONPATH=. uv run --frozen python experiments/lab2046_two_stage_proof/exp2_congestion_tradeoff.py"
+}
