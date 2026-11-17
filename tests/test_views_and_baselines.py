@@ -300,6 +300,7 @@ def test_rs_downlink_toggle_decouples_return_wait() -> None:
 
 @pytest.mark.parametrize("placer", ["nearest", "least_loaded", "orbit_thermal"])
 @pytest.mark.parametrize("planner", ["none", "reactive"])
+@pytest.mark.e2e
 def test_3x2_cross_matrix_end_to_end(placer: str, planner: str) -> None:
     tr = _multi_node_trace()
     cfg = _multi_node_cfg()

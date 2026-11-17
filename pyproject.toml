@@ -21,3 +21,11 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.2.0",
 ]
+
+[tool.pytest.ini_options]
+addopts = "--strict-markers"
+markers = [
+    "unit: small pure-model or module tests without a full simulation",
+    "regression: bounded invariant checks at public simulation seams",
+    "e2e: runner and suite wiring with one seed and a short horizon",
+]

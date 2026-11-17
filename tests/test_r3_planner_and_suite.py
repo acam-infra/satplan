@@ -14,13 +14,15 @@ from satplan.suite import PLACERS_3X3, PLANNERS_3X3, run_suite
 from satplan.trace import SCHEMA, Trace
 from satplan.world import CoWorld, Request
 
+pytestmark = pytest.mark.e2e
 
-def _discrete_3node_trace(*, downlink_gap: bool = False) -> Trace:
+
+def _discrete_3node_trace(*, downlink_gap: bool = False, horizon_s: float = 120.0) -> Trace:
     rs_up = [[0.0, 15.0], [95.0, 120.0]] if downlink_gap else [[0.0, 120.0]]
     return Trace({
         "schema": SCHEMA,
         "name": "synth-3x3",
-        "horizon_s": 120.0,
+        "horizon_s": horizon_s,
         "nodes": [
             {"id": 0, "name": "RS-0", "role": "rs"},
             {"id": 1, "name": "C-1", "role": "compute"},
@@ -135,20 +137,21 @@ def test_r3_milp_improves_goodput_under_eclipse_dod_bottleneck() -> None:
     assert res_r3.metrics["good_frac"] >= res_none.metrics["good_frac"]
 
 
-def test_run_suite_3x3_multiseed_outputs_csv_and_summary_md(tmp_path: Path) -> None:
-    tr = _discrete_3node_trace()
+def test_run_suite_3x3_outputs_csv_and_summary_md(tmp_path: Path) -> None:
+    tr = _discrete_3node_trace(horizon_s=30.0)
     cfg = _discrete_cfg()
+    cfg["workload"]["arrival_window_s"] = 10.0
     inv = RebalanceInvariants(interval_s=5.0, max_inflight=6, max_mig_per_req=2)
-    suite_res = run_suite(tr, cfg, tmp_path, seeds=[1, 2], invariants=inv)
+    suite_res = run_suite(tr, cfg, tmp_path, seeds=[1], invariants=inv)
 
     assert suite_res.csv_path.is_file()
     assert suite_res.markdown_path.is_file()
-    assert len(suite_res.rows) == len(PLACERS_3X3) * len(PLANNERS_3X3) * 2
+    assert len(suite_res.rows) == len(PLACERS_3X3) * len(PLANNERS_3X3)
     assert len(suite_res.summary_rows) == 9
 
     with suite_res.csv_path.open(encoding="utf-8") as fh:
         csv_rows = list(csv.DictReader(fh))
-    assert len(csv_rows) == 18
+    assert len(csv_rows) == 9
     assert all(r["rs_downlink"] == "False" for r in csv_rows)
     assert all(float(r["interval_s"]) == 5.0 and int(r["max_inflight"]) == 6 for r in csv_rows)
 
