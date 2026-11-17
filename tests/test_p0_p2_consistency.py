@@ -2263,3 +2263,154 @@ def test_r2j_waiting_upload_before_placement_reserves_occupancy() -> None:
     # Wait request starts when RS 0->1 comes up at t=6.0 (slot 0 [2,8): 2s -> 13.33Mbps; slot 1 [8,14): 40Mbps).
     assert bg_12[0] == pytest.approx(10_000_000.0 * 8.0 / 6.0, rel=1e-4)
     assert bg_12[1] == pytest.approx(40e6, rel=1e-4)
+
+
+@pytest.mark.parametrize(
+    ("background_count", "upload_bytes", "break_times", "expect_migrant_ontime"),
+    [
+        (1, 9_000_000.0, (3.0,), True),
+        (2, 9_000_000.0, (3.0, 3.0), False),
+        (3, 9_000_000.0, (3.0, 3.0, 3.0), False),
+        (3, 12_000_000.0, (3.0, 3.0, 3.0), False),
+        (2, 9_000_000.0, (3.0, 4.0), False),
+    ],
+)
+def test_r2k_simultaneous_and_staggered_background_retries(
+    background_count: int,
+    upload_bytes: float,
+    break_times: tuple[float, ...],
+    expect_migrant_ontime: bool,
+) -> None:
+    """R2k: joint retry occupancy sums concurrent/staggered retries and carries spillover across slots."""
+    nodes = [{"id": 0, "role": "rs"}, {"id": 1, "role": "compute"}, {"id": 2, "role": "compute"}]
+    edges = [
+        {"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 60.0]]},
+        {"u": 1, "v": 2, "kind": "inter", "up": [[0.0, 60.0]]},
+    ]
+    dark = [[], [[0.0, 60.0]], []]
+    fail_nodes: dict[int, int] = {}
+    for idx_b, bt in enumerate(break_times):
+        nid = 3 + idx_b
+        nodes.append({"id": nid, "role": "compute"})
+        edges.append({"u": 0, "v": nid, "kind": "intra", "up": [[0.0, bt]]})
+        dark.append([[0.0, 60.0]])
+        fail_nodes[idx_b] = nid
+
+    tr = Trace({"schema": SCHEMA, "name": "r2k-joint-retries", "horizon_s": 60.0, "nodes": nodes, "edges": edges, "dark": dark})
+    cfg = _base_cfg()
+    cfg["control_period_s"] = 2.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["thermal"]["T0_C"] = 35.0
+    cfg["net"]["link_gbps"].update(inter=0.04, intra=0.008, rs=10.0)
+    cfg["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+    records: list[tuple[tuple[int, ...], dict[tuple[int, int], tuple[float, ...]]]] = []
+
+    def placer(view, req):
+        if req.i < background_count:
+            nid = fail_nodes[req.i]
+            return nid if view.connected(req.origin, nid) else 2
+        return 1
+
+    class _RecPlanner:
+        requires_forecast = True
+
+        def __init__(self) -> None:
+            self.inner = R3RuntimePlanner(builder=ProblemBuilder(horizon_slots=4, time_limit_s=5.0))
+
+        def plan(self, view, invariants):
+            action = self.inner.plan(view, invariants)
+            res = self.inner.last_result
+            assert res is not None
+            prob = self.inner.builder.build(view, invariants)
+            bg_map = {(e.src, e.dst): e.bg_bps for e in prob.edges if e.bg_bps is not None}
+            records.append((res.goodput_req_ids, bg_map))
+            return action
+
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, placer=placer, planner=_RecPlanner(), seed=1)
+    for i in range(background_count):
+        world.submit(Request(i, 0, 0.0, False, 1, 1, upload_bytes, 50.0))
+    migrant = Request(background_count, 0, 0.0, False, 5000, 50, 1.0, 14.001)
+    world.submit(migrant)
+    env.run(until=40.0)
+    actual_ontime = {r.i for r in world.reqs if r.t_delivered is not None and r.t_delivered <= r.deadline}
+    assert records
+    assert all(set(p).issubset(actual_ontime) for p, _ in records)
+    first_pred, first_bg = records[0]
+    if expect_migrant_ontime:
+        assert background_count in actual_ontime
+        assert background_count in first_pred
+        assert first_bg[(1, 2)] == pytest.approx((12e6, 0.0, 0.0, 0.0), rel=1e-4)
+    else:
+        assert background_count not in first_pred
+        if background_count == 2:
+            assert first_bg[(1, 2)] == pytest.approx((24e6, 0.0, 0.0, 0.0), rel=1e-4)
+        elif upload_bytes == 9_000_000.0:
+            assert first_bg[(1, 2)] == pytest.approx((36e6, 0.0, 0.0, 0.0), rel=1e-4)
+        else:
+            # 3 * 12MB = 36MB > 30MB slot-0 cap: 30MB (40Mbps) in slot 0, 6MB carryover (8Mbps) in slot 1.
+            assert first_bg[(1, 2)][0] == pytest.approx(40e6, rel=1e-4)
+            assert first_bg[(1, 2)][1] == pytest.approx(6_000_000.0 * 8.0 / 6.0, rel=1e-4)
+
+
+def test_r2k_joint_retry_disjoint_path_positive() -> None:
+    """R2k positive: 2 simultaneous retries on 0->1->3 do not block disjoint 4->5 migration."""
+    tr = Trace({
+        "schema": SCHEMA,
+        "name": "r2k-disjoint-positive",
+        "horizon_s": 60.0,
+        "nodes": [
+            {"id": 0, "role": "rs"},
+            {"id": 1, "role": "compute"},
+            {"id": 2, "role": "compute"},
+            {"id": 3, "role": "compute"},
+            {"id": 4, "role": "compute"},
+            {"id": 5, "role": "compute"},
+            {"id": 6, "role": "rs"},
+        ],
+        "edges": [
+            {"u": 0, "v": 2, "kind": "intra", "up": [[0.0, 3.0]]},
+            {"u": 0, "v": 1, "kind": "rs", "up": [[0.0, 60.0]]},
+            {"u": 1, "v": 3, "kind": "inter", "up": [[0.0, 60.0]]},
+            {"u": 6, "v": 4, "kind": "rs", "up": [[0.0, 60.0]]},
+            {"u": 4, "v": 5, "kind": "inter", "up": [[0.0, 60.0]]},
+        ],
+        "dark": [[], [[0.0, 60.0]], [[0.0, 60.0]], [], [[0.0, 60.0]], [], []],
+    })
+    cfg = _base_cfg()
+    cfg["control_period_s"] = 2.0
+    cfg["power"]["eclipse_dod_budget_j"] = 0.0
+    cfg["thermal"]["T0_C"] = 35.0
+    cfg["net"]["link_gbps"].update(inter=0.04, intra=0.008, rs=10.0)
+    cfg["gpu"].update(t_fixed_s=0.1, t_weights_s=0.0, t_kv_tok_s=0.0, t_seq_s=0.0)
+    preds: list[tuple[int, ...]] = []
+
+    def placer(view, req):
+        if req.i < 2:
+            return 2 if view.connected(req.origin, 2) else 3
+        return 4
+
+    class _RecPlanner:
+        requires_forecast = True
+
+        def __init__(self) -> None:
+            self.inner = R3RuntimePlanner(builder=ProblemBuilder(horizon_slots=4, time_limit_s=5.0))
+
+        def plan(self, view, invariants):
+            action = self.inner.plan(view, invariants)
+            if self.inner.last_result is not None:
+                preds.append(self.inner.last_result.goodput_req_ids)
+            return action
+
+    env = simpy.Environment()
+    world = CoWorld(env, tr, cfg, placer=placer, planner=_RecPlanner(), seed=1)
+    world.submit(Request(0, 0, 0.0, False, 1, 1, 9_000_000.0, 50.0))
+    world.submit(Request(1, 0, 0.0, False, 1, 1, 9_000_000.0, 50.0))
+    migrant = Request(2, 6, 0.0, False, 5000, 50, 1.0, 14.001)
+    world.submit(migrant)
+    env.run(until=25.0)
+    actual_ontime = {r.i for r in world.reqs if r.t_delivered is not None and r.t_delivered <= r.deadline}
+    assert 2 in actual_ontime
+    assert migrant.node == 5
+    assert any(2 in p for p in preds)
+    assert all(set(p).issubset(actual_ontime) for p in preds)
