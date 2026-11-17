@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Any
 
 import simpy
-from experiments.lab2046_common import ReplayPlacer, git_head_sha, sha256_file
+import yaml
+from experiments.lab2046_common import ReplayPlacer, git_head_sha, sha256_bytes, sha256_file
 from satplan.actions import MigrationOrder, PlanAction
 from satplan.metrics import Recorder, _pct, request_table, summarize
 from satplan.net import FluidNet, allocate_max_min_rates
@@ -21,12 +22,18 @@ from satplan.trace import INF, SCHEMA, Trace
 from satplan.world import CoWorld, Request, make_requests
 
 
-class NoShareMigFluidNet(FluidNet):
-    """Diagnostic privilege: migration flows do not share bandwidth with each other.
+def _deep_merge(base: dict, patch: dict) -> dict:
+    out = copy.deepcopy(base)
+    for k, v in patch.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = copy.deepcopy(v)
+    return out
 
-    Upload flows still share normally; each migration flow receives its full path bottleneck
-    capacity as if no other migration flow contended on shared links.
-    """
+
+class NoShareMigFluidNet(FluidNet):
+    """Diagnostic privilege: migration flows neither share with each other nor contend with upload flows."""
 
     def _allocate(self) -> None:
         for f in self.flows:
@@ -44,7 +51,7 @@ class NoShareMigFluidNet(FluidNet):
 
 
 class NoShareDiagWorld(CoWorld):
-    """CoWorld using NoShareMigFluidNet for shared-link contention attribution."""
+    """CoWorld using NoShareMigFluidNet (privileged: cancels mig-mig and mig-up contention)."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -52,7 +59,6 @@ class NoShareDiagWorld(CoWorld):
 
 
 def _exp2_trace(horizon_s: float = 200.0) -> Trace:
-    """RS-0 -> CS-1 (eclipse [50,200]); CS-1 -> CS-2 (e1) and CS-1 -> CS-3 (e2)."""
     data = {
         "schema": SCHEMA,
         "name": "lab2046-exp2-shared-bottleneck",
@@ -68,51 +74,29 @@ def _exp2_trace(horizon_s: float = 200.0) -> Trace:
             {"u": 1, "v": 2, "kind": "inter", "up": [[0.0, float(horizon_s)]]},
             {"u": 1, "v": 3, "kind": "inter", "up": [[0.0, float(horizon_s)]]},
         ],
-        "dark": [[], [[50.0, 200.0]], [], []],
+        "dark": [[], [[50.0, float(horizon_s)]], [], []],
     }
     return Trace(data)
 
 
-def _exp2_cfg() -> dict:
-    return {
-        "name": "exp2-congestion",
-        "delivery": "final",
-        "rs_downlink": False,
-        "control_period_s": 2.0,
-        "frame_s": 2.0,
-        "rebalance_invariants": {"interval_s": 5.0, "max_inflight": 8, "max_mig_per_req": 4},
-        "model": {"layers": 32, "kv_heads": 8, "head_dim": 128, "bytes_per_elem": 2},
-        "gpu": {"kv_gib": 24.0, "t_fixed_s": 0.003, "t_weights_s": 0.01, "t_kv_tok_s": 1e-7, "t_seq_s": 5e-5, "mem_freq_exp": 0.6},
-        "power": {
-            "P_idle": 60,
-            "P_max": 300,
-            "gamma": 2.4,
-            "f_min": 0.35,
-            "P_dark": 80,
-            "eclipse_dod_budget_j": 800.0,
-            "tiers": [
-                {"name": "idle_0w", "power_w": 0.0, "clock_f": 0.0},
-                {"name": "low_20w", "power_w": 20.0, "clock_f": 0.35},
-                {"name": "high_300w", "power_w": 300.0, "clock_f": 1.0},
-            ],
-        },
-        "thermal": {"T0_C": 25.0, "T_amb_C": 20.0, "T_max_C": 85.0, "R_th": 0.25, "C_th": 150.0},
-        "net": {"link_gbps": {"intra": 10.0, "inter": 0.5, "rs": 5.0}, "hop_latency_s": 0.005},
-        "workload": {"arrival_window_s": 10.0},
-        "slo": {"max_stall_frac": 0.1},
-    }
-
-
-def _exp2_reqs(*, count: int = 4) -> list[Request]:
+def _exp2_reqs(cfg: dict, *, count: int) -> list[Request]:
+    tpl = cfg["requests_template"]
     return [
-        Request(i=i, origin=0, t=float(i), long=True, pin=500, pout=6000, upload_bytes=10e6, deadline=102.0 + i)
+        Request(
+            i=i,
+            origin=int(tpl["origin"]),
+            t=float(i),
+            long=bool(tpl["long"]),
+            pin=int(tpl["pin"]),
+            pout=int(tpl["pout"]),
+            upload_bytes=float(tpl["upload_MB"]) * 1e6,
+            deadline=float(tpl["base_deadline"]) + i,
+        )
         for i in range(count)
     ]
 
 
 class _SimpleAllToCS2Planner:
-    """Naive realloc: only checks CS-2 headroom, ignores in-flight link sharing -> sends all to CS-2."""
-
     def __init__(self, *, max_reqs: int = 4) -> None:
         self.max_reqs = max_reqs
 
@@ -129,8 +113,6 @@ class _SimpleAllToCS2Planner:
 
 
 class _CommAwareSpreadPlanner:
-    """Comm-aware realloc: accounts for link sharing & load, splits across CS-2 (e1) and CS-3 (e2)."""
-
     def plan(self, view: Any, invariants: RebalanceInvariants) -> PlanAction:
         if not view.is_eclipse(1):
             return PlanAction()
@@ -151,19 +133,38 @@ class _CommAwareSpreadPlanner:
 
 
 def _mig_stats_from_events(events: list[list[Any]]) -> dict[str, Any]:
-    starts: dict[int, float] = {}
-    durs: list[float] = []
+    """Track per-attempt migration durations cleanly using (req_id, attempt_idx)."""
+    active_attempt: dict[int, tuple[int, float]] = {}
+    attempt_counts: dict[int, int] = defaultdict(int)
+    attempts: list[dict[str, Any]] = []
+    unlocked_durs: list[float] = []
     for ev in events:
         if len(ev) < 3:
             continue
         t, kind, kw = float(ev[0]), ev[1], ev[2]
         if kind == "mig_start":
-            starts[int(kw["req"])] = t
+            rid = int(kw["req"])
+            attempt_counts[rid] += 1
+            active_attempt[rid] = (attempt_counts[rid], t)
         elif kind == "mig_unlock":
             rid = int(kw["req"])
-            if rid in starts:
-                durs.append(t - starts[rid])
-    return {"mig_count": len(durs), "mig_done_p95_s": _pct(durs, 95) if durs else None}
+            att, t0 = active_attempt.pop(rid, (attempt_counts[rid], t))
+            dur = t - t0
+            unlocked_durs.append(dur)
+            attempts.append({"req": rid, "attempt": att, "t_start": t0, "t_end": t, "status": "unlocked", "dur_s": dur})
+        elif kind in ("mig_fail", "mig_abort"):
+            rid = int(kw["req"])
+            att, t0 = active_attempt.pop(rid, (attempt_counts[rid], t))
+            attempts.append({"req": rid, "attempt": att, "t_start": t0, "t_end": t, "status": kind, "dur_s": t - t0})
+    for rid, (att, t0) in active_attempt.items():
+        attempts.append({"req": rid, "attempt": att, "t_start": t0, "t_end": None, "status": "unfinished", "dur_s": None})
+    unfinished_or_failed = sum(1 for a in attempts if a["status"] != "unlocked")
+    return {
+        "mig_unlocked_count": len(unlocked_durs),
+        "mig_unfinished_or_failed_count": unfinished_or_failed,
+        "mig_unlocked_p95_s": _pct(unlocked_durs, 95) if unlocked_durs else None,
+        "attempts": attempts,
+    }
 
 
 def _run_min_exp2(
@@ -176,7 +177,7 @@ def _run_min_exp2(
     world_cls: type[CoWorld] = CoWorld,
 ) -> dict[str, Any]:
     env = simpy.Environment()
-    rec = Recorder(2.0)
+    rec = Recorder(float(cfg.get("frame_s", 2.0)))
     inv = RebalanceInvariants.from_cfg(cfg)
     targets = {r.i: 1 for r in reqs}
     w = world_cls(env, tr, cfg, policy=CompositePolicy(ReplayPlacer(targets), planner_obj, inv), recorder=rec, seed=1)
@@ -190,7 +191,7 @@ def _run_min_exp2(
             mig_e1 = [f for f in w.net.flows if f.tag == "mig" and any(e == 1 for _, _, e in f.hops)]
             up_e1 = [f for f in w.net.flows if f.tag == "up" and any(e == 1 for _, _, e in f.hops)]
             peak_mig_flows_e1 = max(peak_mig_flows_e1, len(mig_e1))
-            if env.now >= 48.0 and env.now <= 90.0:
+            if 48.0 <= env.now <= 90.0:
                 bn_timeline.append(
                     {
                         "t": round(env.now, 1),
@@ -207,6 +208,7 @@ def _run_min_exp2(
         w.submit(r)
     env.run(until=tr.horizon)
     m = summarize(w)
+    m["censored_completion_count"] = sum(1 for r in w.reqs if r.t_delivered is None)
     ms = _mig_stats_from_events(rec.events)
     return {
         "arm": arm,
@@ -218,36 +220,43 @@ def _run_min_exp2(
     }
 
 
-def run_minimal_exp2(out_dir: Path) -> None:
-    tr = _exp2_trace(200.0)
-    cfg = _exp2_cfg()
-    arms = [
-        _run_min_exp2("Solo_1_Mig", cfg, tr, _exp2_reqs(count=1), _SimpleAllToCS2Planner(max_reqs=1)),
-        _run_min_exp2("B_none", cfg, tr, _exp2_reqs(count=4), get_planner("none", cfg)),
-        _run_min_exp2("Simple_Greedy", cfg, tr, _exp2_reqs(count=4), _SimpleAllToCS2Planner(max_reqs=4)),
+def run_minimal_exp2(spec: dict, out_dir: Path) -> None:
+    cfg = copy.deepcopy(spec["exp2_minimal"])
+    cfg["name"] = "exp2-congestion"
+    cfg["delivery"] = "final"
+    cfg["rs_downlink"] = False
+    tr = _exp2_trace(float(cfg["horizon_s"]))
+    solo = _run_min_exp2("Solo_1_Mig", cfg, tr, _exp2_reqs(cfg, count=1), _SimpleAllToCS2Planner(max_reqs=1))
+    main_arms = [
+        _run_min_exp2("B_none", cfg, tr, _exp2_reqs(cfg, count=4), get_planner("none", cfg)),
+        _run_min_exp2("Simple_Greedy", cfg, tr, _exp2_reqs(cfg, count=4), _SimpleAllToCS2Planner(max_reqs=4)),
         _run_min_exp2(
             "Diag_NoShare",
             cfg,
             tr,
-            _exp2_reqs(count=4),
+            _exp2_reqs(cfg, count=4),
             _SimpleAllToCS2Planner(max_reqs=4),
             world_cls=NoShareDiagWorld,
         ),
-        _run_min_exp2("CommAware_Spread", cfg, tr, _exp2_reqs(count=4), _CommAwareSpreadPlanner()),
+        _run_min_exp2("CommAware_Spread", cfg, tr, _exp2_reqs(cfg, count=4), _CommAwareSpreadPlanner()),
     ]
+    all_arms = [solo, *main_arms]
     rows = []
-    for a in arms:
+    for a in all_arms:
         m = a["metrics"]
         ms = a["mig_stats"]
         rows.append(
             {
+                "table_group": "single_flow_diag" if a["arm"] == "Solo_1_Mig" else "main_4req",
                 "arm": a["arm"],
                 "n_req": m["n_req"],
                 "goodput_tok_s": m["goodput_tok_s"],
                 "long_slo_pct": m["good_long_frac"] * 100.0,
                 "badput_tok_s": m["badput_tok_s"],
-                "mig_done_p95_s": ms["mig_done_p95_s"] if ms["mig_done_p95_s"] is not None else "",
+                "mig_unlocked_p95_s": round(ms["mig_unlocked_p95_s"], 2) if ms["mig_unlocked_p95_s"] is not None else "",
+                "mig_unfinished_or_failed": ms["mig_unfinished_or_failed_count"],
                 "peak_bn_mig_flows": a["peak_mig_flows_e1"],
+                "censored_completion_count": m["censored_completion_count"],
                 "e2e_p95_all_s": m["e2e_p95_all_s"],
             }
         )
@@ -255,36 +264,24 @@ def run_minimal_exp2(out_dir: Path) -> None:
         w = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
         w.writeheader()
         w.writerows(rows)
-    (out_dir / "exp2_minimal_raw.json").write_text(json.dumps(arms, indent=2), encoding="utf-8")
+    (out_dir / "exp2_minimal_raw.json").write_text(json.dumps(all_arms, indent=2), encoding="utf-8")
 
     print("=== Exp 2 Minimal Shared-Bottleneck Congestion ===")
     for r in rows:
         print(
-            f"  {r['arm']:18s} | n={r['n_req']} | Good={r['goodput_tok_s']:6.1f} | SLO={r['long_slo_pct']:5.1f}% | "
-            f"Bad={r['badput_tok_s']:6.1f} | MigP95={str(r['mig_done_p95_s']):>5s}s | PeakFlows={r['peak_bn_mig_flows']}"
+            f"  [{r['table_group']:16s}] {r['arm']:17s} | Good={r['goodput_tok_s']:6.1f} | SLO={r['long_slo_pct']:5.1f}% | "
+            f"MigP95={str(r['mig_unlocked_p95_s']):>5s}s | PeakFlows={r['peak_bn_mig_flows']} | "
+            f"CompCens={r['censored_completion_count']} | P95={r['e2e_p95_all_s']:.2f}s"
         )
-    print("\n--- Exp 2 Congestion Timeline (e_12 bottleneck): Simple_Greedy vs CommAware_Spread ---")
-    ts = {x["t"]: x for x in arms[2]["bn_timeline"]}
-    tc = {x["t"]: x for x in arms[4]["bn_timeline"]}
-    for t in sorted(ts):
-        if 50.0 <= t <= 76.0:
-            xs, xc = ts[t], tc[t]
-            print(
-                f"  t={t:4.1f}s | Simple(flows={xs['mig_flows_e1']}, rate={xs['per_flow_MBps']:5.2f} MB/s, rem={xs['total_mig_rem_MB']:6.1f} MB) "
-                f"| CommAware(flows={xc['mig_flows_e1']}, rate={xc['per_flow_MBps']:5.2f} MB/s, rem={xc['total_mig_rem_MB']:6.1f} MB)"
-            )
 
 
 class _CommAwareReactivePlanner:
-    """Reactive planner with link-congestion & deadline awareness."""
-
     def plan(self, view: Any, invariants: RebalanceInvariants) -> PlanAction:
         now = view.now
         max_mig = invariants.max_mig_per_req if invariants.max_mig_per_req is not None else (1 << 30)
         in_flight = view.inflight_migrations
         if in_flight >= invariants.max_inflight:
             return PlanAction()
-        # Count active flows per edge from current edge_rates
         busy_edges = {e for e, rate in view.edge_rates().items() if rate > 1e-3}
         cands: list[tuple[float, Request, int]] = []
         for j in view.compute_nodes:
@@ -316,7 +313,6 @@ class _CommAwareReactivePlanner:
             if best_dst is not None:
                 p = view.path(src, best_dst)
                 assert p is not None
-                # Avoid launching a flow onto an already-congested edge if we can stagger
                 if any(e in used_edges for e in p[1]) and len(orders) >= 2:
                     continue
                 used_edges.update(p[1])
@@ -325,29 +321,24 @@ class _CommAwareReactivePlanner:
         return PlanAction(migrations=tuple(orders))
 
 
-def run_w53_congestion(out_dir: Path, here: Path) -> None:
-    base_cfg_path = here.parent.parent / "configs" / "w53_baseline.yaml"
-    cfg = load_config(base_cfg_path)
-    cfg["workload"]["arrival_window_s"] = 400.0
-    cfg["rebalance_invariants"] = {"interval_s": 5.0, "max_inflight": 24, "max_mig_per_req": 4}
-    cfg["power"]["eclipse_dod_budget_j"] = 100000.0
-    cfg["power"]["tiers"] = [
-        {"name": "idle_0w", "power_w": 0.0, "clock_f": 0.0},
-        {"name": "low_20w", "power_w": 20.0, "clock_f": 0.35},
-        {"name": "high_300w", "power_w": 300.0, "clock_f": 1.0},
-    ]
-    cfg["thermal"].update({"T0_C": 25.0, "T_amb_C": 20.0, "T_max_C": 85.0, "R_th": 0.25})
-    cfg["net"]["link_gbps"]["inter"] = 0.35
+def run_w53_congestion(spec: dict, out_dir: Path, here: Path) -> dict[str, Any]:
+    raw_dir = out_dir / "raw_w53_exp2"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    base_cfg_path = (here / spec["base_w53_config"]).resolve()
+    base_cfg = load_config(base_cfg_path)
+    base_cfg["workload"]["arrival_window_s"] = float(spec["w53_arrival_window_s"])
+    base_cfg["rebalance_invariants"] = copy.deepcopy(spec["w53_rebalance_invariants"])
+    cfg = _deep_merge(base_cfg, spec["w53_constrained_overrides"])
 
-    trace_path = (Path(cfg["_dir"]) / cfg["trace"]).resolve()
+    trace_path = (Path(base_cfg["_dir"]) / base_cfg["trace"]).resolve()
     tr_raw = json.loads(trace_path.read_text(encoding="utf-8"))
-    tr_raw["horizon_s"] = 3600.0
+    tr_raw["horizon_s"] = float(spec["w53_horizon_s"])
     trace = Trace(tr_raw)
     inv = RebalanceInvariants.from_cfg(cfg)
 
     w53_rows: list[dict[str, Any]] = []
-    for seed in (1, 2, 3):
-        reqs = make_requests(cfg, trace, seed)
+    for seed in spec["w53_seeds"]:
+        reqs = make_requests(cfg, trace, int(seed))
         for arm_name, planner_obj, w_cls in [
             ("W53_none", get_planner("none", cfg), CoWorld),
             ("W53_Simple_Reactive", get_planner("reactive", cfg), CoWorld),
@@ -356,20 +347,24 @@ def run_w53_congestion(out_dir: Path, here: Path) -> None:
         ]:
             env = simpy.Environment()
             rec = Recorder(10.0)
-            w = w_cls(env, trace, copy.deepcopy(cfg), policy=CompositePolicy(get_placer("nearest"), planner_obj, inv), recorder=rec, seed=seed)
+            w = w_cls(env, trace, copy.deepcopy(cfg), policy=CompositePolicy(get_placer("nearest"), planner_obj, inv), recorder=rec, seed=int(seed))
             rec.attach(w)
             peak_edge_mig = 0
+            edge_timeline: list[dict[str, Any]] = []
 
-            def _probe_net(world=w):
+            def _probe_net(world=w, tl=edge_timeline):
                 nonlocal peak_edge_mig
                 while True:
-                    cnt: dict[int, int] = defaultdict(int)
+                    cnt_mig: dict[int, int] = defaultdict(int)
+                    cnt_up: dict[int, int] = defaultdict(int)
                     for f in world.net.flows:
-                        if f.tag == "mig":
-                            for _, _, e in f.hops:
-                                cnt[e] += 1
-                    if cnt:
-                        peak_edge_mig = max(peak_edge_mig, max(cnt.values()))
+                        target = cnt_mig if f.tag == "mig" else cnt_up
+                        for _, _, e in f.hops:
+                            target[e] += 1
+                    if cnt_mig:
+                        top_e, top_c = max(cnt_mig.items(), key=lambda x: x[1])
+                        peak_edge_mig = max(peak_edge_mig, top_c)
+                        tl.append({"t": round(world.env.now, 1), "top_edge": top_e, "mig_flows": top_c, "up_flows": cnt_up[top_e]})
                     yield world.env.timeout(5.0)
 
             env.process(_probe_net())
@@ -389,17 +384,39 @@ def run_w53_congestion(out_dir: Path, here: Path) -> None:
                 )
             env.run(until=trace.horizon)
             m = summarize(w)
+            m["censored_dl_gt_h"] = sum(1 for r in w.reqs if r.deadline > trace.horizon)
+            m["censored_completion_count"] = sum(1 for r in w.reqs if r.t_delivered is None)
             ms = _mig_stats_from_events(rec.events)
+            (raw_dir / f"{arm_name}__s{seed}.json").write_text(
+                json.dumps(
+                    {
+                        "arm": arm_name,
+                        "seed": int(seed),
+                        "metrics": m,
+                        "mig_unlocked_count": ms["mig_unlocked_count"],
+                        "mig_unfinished_or_failed_count": ms["mig_unfinished_or_failed_count"],
+                        "mig_unlocked_p95_s": ms["mig_unlocked_p95_s"],
+                        "mig_attempts": ms["attempts"],
+                        "edge_timeline": edge_timeline,
+                        "requests": request_table(w),
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
             w53_rows.append(
                 {
                     "arm": arm_name,
-                    "seed": seed,
+                    "seed": int(seed),
                     "goodput_tok_s": m["goodput_tok_s"],
                     "long_slo_pct": m["good_long_frac"] * 100.0,
                     "badput_tok_s": m["badput_tok_s"],
-                    "mig_count": ms["mig_count"],
-                    "mig_done_p95_s": ms["mig_done_p95_s"] if ms["mig_done_p95_s"] is not None else 0.0,
+                    "mig_unlocked_count": ms["mig_unlocked_count"],
+                    "mig_unfinished_or_failed": ms["mig_unfinished_or_failed_count"],
+                    "mig_unlocked_p95_s": round(ms["mig_unlocked_p95_s"], 2) if ms["mig_unlocked_p95_s"] is not None else 0.0,
                     "peak_edge_mig_flows": peak_edge_mig,
+                    "censored_dl_gt_h": m["censored_dl_gt_h"],
+                    "censored_completion_count": m["censored_completion_count"],
                 }
             )
 
@@ -408,30 +425,46 @@ def run_w53_congestion(out_dir: Path, here: Path) -> None:
         w.writeheader()
         w.writerows(w53_rows)
 
-    print("\n=== Exp 2 W53 Constrained (3-seed mean: Simple Reactive vs NoShare Diag vs CommAware) ===")
+    print("\n=== Exp 2 W53 Constrained (3-seed mean) ===")
     b_g = statistics.mean(r["goodput_tok_s"] for r in w53_rows if r["arm"] == "W53_none")
     for arm in ("W53_none", "W53_Simple_Reactive", "W53_Diag_NoShare", "W53_CommAware"):
         rs = [r for r in w53_rows if r["arm"] == arm]
         gm = statistics.mean(r["goodput_tok_s"] for r in rs)
         sm = statistics.mean(r["long_slo_pct"] for r in rs)
         bm = statistics.mean(r["badput_tok_s"] for r in rs)
-        mp = statistics.mean(r["mig_done_p95_s"] for r in rs)
+        mp = statistics.mean(r["mig_unlocked_p95_s"] for r in rs)
         pf = max(r["peak_edge_mig_flows"] for r in rs)
+        mc = statistics.mean(r["mig_unlocked_count"] for r in rs)
+        mf = statistics.mean(r["mig_unfinished_or_failed"] for r in rs)
         print(
             f"  {arm:20s} | Good={gm:7.1f} ({(gm/b_g-1)*100:+5.1f}%) | LongSLO={sm:5.2f}% | "
-            f"Bad={bm:7.1f} | MigP95={mp:5.1f}s | PeakEdgeMigFlows={pf}"
+            f"Bad={bm:7.1f} | MigOK={mc:5.1f} Fail={mf:4.1f} P95={mp:5.1f}s | PeakFlows={pf}"
         )
+    return {
+        "base_cfg_sha256": sha256_file(base_cfg_path),
+        "trace_sha256": sha256_file(trace_path),
+        "effective_w53_config": {k: v for k, v in cfg.items() if k != "_dir"},
+    }
 
 
 def main() -> None:
     here = Path(__file__).resolve().parent
     out_dir = here / "out"
     out_dir.mkdir(parents=True, exist_ok=True)
-    run_minimal_exp2(out_dir)
-    run_w53_congestion(out_dir, here)
+    spec_path = here / "spec.yaml"
+    spec_raw = spec_path.read_bytes()
+    spec = yaml.safe_load(spec_raw)
+
+    run_minimal_exp2(spec, out_dir)
+    w53_meta = run_w53_congestion(spec, out_dir, here)
     mf = {
+        "base_main_sha": "04bfed1f675fcb899dad352bdba7b47c79383e7d",
         "pre_run_head_sha": git_head_sha(here.parent.parent),
         "runner_sha256": sha256_file(Path(__file__)),
+        "common_sha256": sha256_file(here.parent / "lab2046_common.py"),
+        "spec_sha256": sha256_bytes(spec_raw),
+        "diag_noshare_note": "Privileged: cancels both mig-mig and mig-up sharing, and allows dynamic re-decision (not fixed migration plan).",
+        **w53_meta,
         "rerun_cmd": "PYTHONPATH=. uv run --frozen python experiments/lab2046_two_stage_proof/exp2_congestion_tradeoff.py",
     }
     (out_dir / "exp2_manifest.json").write_text(json.dumps(mf, indent=2), encoding="utf-8")

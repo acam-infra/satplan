@@ -1,0 +1,78 @@
+name: lab2046_two_stage_proof
+title: "LAB-2046 Two-Stage Proof: (1) Single-Placement Structural Limit & (2) Shared-Link Congestion Tradeoff"
+base_w53_config: "../../configs/w53_baseline.yaml"
+w53_horizon_s: 3600.0
+w53_arrival_window_s: 400.0
+w53_seeds: [1, 2, 3]
+w53_rebalance_invariants:
+  interval_s: 5.0
+  max_inflight: 24
+  max_mig_per_req: 4
+
+w53_constrained_overrides:
+  power:
+    eclipse_dod_budget_j: 100000.0
+    tiers:
+      - {name: idle_0w, power_w: 0.0, clock_f: 0.0}
+      - {name: low_20w, power_w: 20.0, clock_f: 0.35}
+      - {name: high_300w, power_w: 300.0, clock_f: 1.0}
+  thermal:
+    T0_C: 25.0
+    T_amb_C: 20.0
+    T_max_C: 85.0
+    R_th: 0.25
+  net:
+    link_gbps:
+      inter: 0.35
+
+exp1_minimal:
+  horizon_s: 300.0
+  control_period_s: 2.0
+  frame_s: 5.0
+  rebalance_invariants: {interval_s: 5.0, max_inflight: 8, max_mig_per_req: 4}
+  model: {layers: 32, kv_heads: 8, head_dim: 128, bytes_per_elem: 2}
+  gpu: {kv_gib: 24.0, t_fixed_s: 0.003, t_weights_s: 0.01, t_kv_tok_s: 1.0e-7, t_seq_s: 5.0e-5, mem_freq_exp: 0.6}
+  power:
+    P_idle: 60
+    P_max: 300
+    gamma: 2.4
+    f_min: 0.35
+    P_dark: 80
+    eclipse_dod_budget_j: 1000.0
+    tiers:
+      - {name: idle_0w, power_w: 0.0, clock_f: 0.0}
+      - {name: low_20w, power_w: 20.0, clock_f: 0.35}
+      - {name: high_300w, power_w: 300.0, clock_f: 1.0}
+  thermal: {T0_C: 25.0, T_amb_C: 20.0, T_max_C: 85.0, R_th: 0.25, C_th: 150.0}
+  net:
+    link_gbps: {intra: 10.0, inter: 1.5, rs: 5.0}
+    hop_latency_s: 0.005
+  workload: {arrival_window_s: 20.0}
+  slo: {max_stall_frac: 0.1}
+  request: {i: 0, origin: 0, t: 0.0, long: true, pin: 500, pout: 10500, upload_MB: 50.0, deadline: 178.0}
+
+exp2_minimal:
+  horizon_s: 200.0
+  control_period_s: 2.0
+  frame_s: 2.0
+  rebalance_invariants: {interval_s: 5.0, max_inflight: 8, max_mig_per_req: 4}
+  model: {layers: 32, kv_heads: 8, head_dim: 128, bytes_per_elem: 2}
+  gpu: {kv_gib: 24.0, t_fixed_s: 0.003, t_weights_s: 0.01, t_kv_tok_s: 1.0e-7, t_seq_s: 5.0e-5, mem_freq_exp: 0.6}
+  power:
+    P_idle: 60
+    P_max: 300
+    gamma: 2.4
+    f_min: 0.35
+    P_dark: 80
+    eclipse_dod_budget_j: 800.0
+    tiers:
+      - {name: idle_0w, power_w: 0.0, clock_f: 0.0}
+      - {name: low_20w, power_w: 20.0, clock_f: 0.35}
+      - {name: high_300w, power_w: 300.0, clock_f: 1.0}
+  thermal: {T0_C: 25.0, T_amb_C: 20.0, T_max_C: 85.0, R_th: 0.25, C_th: 150.0}
+  net:
+    link_gbps: {intra: 10.0, inter: 0.5, rs: 5.0}
+    hop_latency_s: 0.005
+  workload: {arrival_window_s: 10.0}
+  slo: {max_stall_frac: 0.1}
+  requests_template: {count: 4, origin: 0, long: true, pin: 500, pout: 6000, upload_MB: 10.0, base_deadline: 102.0}

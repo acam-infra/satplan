@@ -886,7 +886,7 @@
     ]
   },
   {
-    "arm": "Single_Upper_CS1_0up",
+    "arm": "Single_0Upload_CS1",
     "metrics": {
       "n_req": 1,
       "n_long": 1,
@@ -1329,7 +1329,7 @@
     ]
   },
   {
-    "arm": "Single_Upper_CS2_0up",
+    "arm": "Single_0Upload_CS2",
     "metrics": {
       "n_req": 1,
       "n_long": 1,

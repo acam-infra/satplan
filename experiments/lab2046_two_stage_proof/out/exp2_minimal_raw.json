@@ -20,11 +20,23 @@
       "zero_power_s": 514.0,
       "dod_exhausted_s": 0.0,
       "upload_fail": 0,
-      "link_GB_hops": 0.3757008854961832
+      "link_GB_hops": 0.3757008854961832,
+      "censored_completion_count": 0
     },
     "mig_stats": {
-      "mig_count": 1,
-      "mig_done_p95_s": 5.859999999999999
+      "mig_unlocked_count": 1,
+      "mig_unfinished_or_failed_count": 0,
+      "mig_unlocked_p95_s": 5.859999999999999,
+      "attempts": [
+        {
+          "req": 0,
+          "attempt": 1,
+          "t_start": 50.0,
+          "t_end": 55.86,
+          "status": "unlocked",
+          "dur_s": 5.859999999999999
+        }
+      ]
     },
     "peak_mig_flows_e1": 1,
     "bn_timeline": [
@@ -221,11 +233,14 @@
       "zero_power_s": 532.0,
       "dod_exhausted_s": 136.0,
       "upload_fail": 0,
-      "link_GB_hops": 0.04
+      "link_GB_hops": 0.04,
+      "censored_completion_count": 4
     },
     "mig_stats": {
-      "mig_count": 0,
-      "mig_done_p95_s": null
+      "mig_unlocked_count": 0,
+      "mig_unfinished_or_failed_count": 0,
+      "mig_unlocked_p95_s": null,
+      "attempts": []
     },
     "peak_mig_flows_e1": 0,
     "bn_timeline": [
@@ -460,11 +475,47 @@
       "zero_power_s": 506.0,
       "dod_exhausted_s": 0.0,
       "upload_fail": 0,
-      "link_GB_hops": 1.5313368873270576
+      "link_GB_hops": 1.5313368873270576,
+      "censored_completion_count": 0
     },
     "mig_stats": {
-      "mig_count": 4,
-      "mig_done_p95_s": 23.846000000000004
+      "mig_unlocked_count": 4,
+      "mig_unfinished_or_failed_count": 0,
+      "mig_unlocked_p95_s": 23.846000000000004,
+      "attempts": [
+        {
+          "req": 3,
+          "attempt": 1,
+          "t_start": 50.0,
+          "t_end": 72.92,
+          "status": "unlocked",
+          "dur_s": 22.92
+        },
+        {
+          "req": 2,
+          "attempt": 1,
+          "t_start": 50.0,
+          "t_end": 73.39,
+          "status": "unlocked",
+          "dur_s": 23.39
+        },
+        {
+          "req": 1,
+          "attempt": 1,
+          "t_start": 50.0,
+          "t_end": 73.71,
+          "status": "unlocked",
+          "dur_s": 23.709999999999994
+        },
+        {
+          "req": 0,
+          "attempt": 1,
+          "t_start": 50.0,
+          "t_end": 73.87,
+          "status": "unlocked",
+          "dur_s": 23.870000000000005
+        }
+      ]
     },
     "peak_mig_flows_e1": 4,
     "bn_timeline": [
@@ -703,11 +754,47 @@
       "zero_power_s": 504.0,
       "dod_exhausted_s": 0.0,
       "upload_fail": 0,
-      "link_GB_hops": 1.5313368873270572
+      "link_GB_hops": 1.5313368873270572,
+      "censored_completion_count": 0
     },
     "mig_stats": {
-      "mig_count": 4,
-      "mig_done_p95_s": 6.186
+      "mig_unlocked_count": 4,
+      "mig_unfinished_or_failed_count": 0,
+      "mig_unlocked_p95_s": 6.186,
+      "attempts": [
+        {
+          "req": 3,
+          "attempt": 1,
+          "t_start": 50.0,
+          "t_end": 55.73,
+          "status": "unlocked",
+          "dur_s": 5.729999999999997
+        },
+        {
+          "req": 2,
+          "attempt": 1,
+          "t_start": 50.0,
+          "t_end": 55.89,
+          "status": "unlocked",
+          "dur_s": 5.890000000000001
+        },
+        {
+          "req": 1,
+          "attempt": 1,
+          "t_start": 50.0,
+          "t_end": 56.05,
+          "status": "unlocked",
+          "dur_s": 6.049999999999997
+        },
+        {
+          "req": 0,
+          "attempt": 1,
+          "t_start": 50.0,
+          "t_end": 56.21,
+          "status": "unlocked",
+          "dur_s": 6.210000000000001
+        }
+      ]
     },
     "peak_mig_flows_e1": 4,
     "bn_timeline": [
@@ -946,11 +1033,47 @@
       "zero_power_s": 472.0,
       "dod_exhausted_s": 0.0,
       "upload_fail": 0,
-      "link_GB_hops": 1.5313368873270574
+      "link_GB_hops": 1.5313368873270574,
+      "censored_completion_count": 0
     },
     "mig_stats": {
-      "mig_count": 4,
-      "mig_done_p95_s": 12.043500000000003
+      "mig_unlocked_count": 4,
+      "mig_unfinished_or_failed_count": 0,
+      "mig_unlocked_p95_s": 12.043500000000003,
+      "attempts": [
+        {
+          "req": 3,
+          "attempt": 1,
+          "t_start": 50.0,
+          "t_end": 61.46,
+          "status": "unlocked",
+          "dur_s": 11.46
+        },
+        {
+          "req": 2,
+          "attempt": 1,
+          "t_start": 50.0,
+          "t_end": 61.78,
+          "status": "unlocked",
+          "dur_s": 11.780000000000001
+        },
+        {
+          "req": 1,
+          "attempt": 1,
+          "t_start": 50.0,
+          "t_end": 61.78,
+          "status": "unlocked",
+          "dur_s": 11.780000000000001
+        },
+        {
+          "req": 0,
+          "attempt": 1,
+          "t_start": 50.0,
+          "t_end": 62.09,
+          "status": "unlocked",
+          "dur_s": 12.090000000000003
+        }
+      ]
     },
     "peak_mig_flows_e1": 2,
     "bn_timeline": [

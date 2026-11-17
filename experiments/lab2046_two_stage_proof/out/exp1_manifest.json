@@ -1,5 +1,127 @@
 {
-  "pre_run_head_sha": "65cc046d65df17619c7a17c89e411f8e85313e54",
-  "runner_sha256": "8a334004e27906ef76145772479bfffd00043e11968ed5ff179564c3656810a3",
+  "base_main_sha": "04bfed1f675fcb899dad352bdba7b47c79383e7d",
+  "pre_run_head_sha": "8899a215f3a02fcab25df4eb503913224f96fa97",
+  "runner_sha256": "c7f89a4e198e2c6163066421760c711ca69792bc378b58c9c9f7b7fffe520136",
+  "common_sha256": "7879b2883119d7e529b293035e34b00774bf64d546c47999327d25492d24b12a",
+  "spec_sha256": "2cd3c7b212a2a4109b1ac9b4c31c0d6647d210210f851d39f0c44386bb9af4c0",
+  "analytical_single_star_bounds": {
+    "relaxation": "0_upload, 0_context_overhead, ignore_thermal_Tmax, arbitrary_tier_mixing",
+    "max_rate_tier": "high_300w",
+    "max_rate_tok_s": 76.628,
+    "best_eff_tier": "low_20w",
+    "best_eff_tok_per_j": 2.281,
+    "eclipse_dod_budget_j": 1000.0,
+    "required_pout_tokens": 10500.0,
+    "deadline_s": 178.0,
+    "cs1_sunlit_s_before_dl": 85.0,
+    "cs1_upper_bound_tokens": 8794.7,
+    "cs2_sunlit_s_before_dl": 83.0,
+    "cs2_upper_bound_tokens": 8641.5,
+    "feasible_single_star_exists": false
+  },
+  "base_cfg_sha256": "ed3ecc7f1d867574492078404f25ea9c2ca6f9d6a6d2e24d88dbcfa1369e34d2",
+  "trace_sha256": "6571b7a00295661ceb621f02f4f6e571c54a1e18def71b4479d7f7672f31e092",
+  "effective_w53_config": {
+    "name": "w53_baseline",
+    "title": "satplan baseline: Walker 53 4x10 + 3 RS (nearest + none)",
+    "trace": "../../satsim/input/traces/coop-w53.trace.json",
+    "scenario": "../../satsim/input/traces/coop-w53.scenario.json",
+    "delivery": "final",
+    "rs_downlink": false,
+    "control_period_s": 2.0,
+    "frame_s": 10.0,
+    "placer": "nearest",
+    "planner": "none",
+    "seeds": [
+      1
+    ],
+    "model": {
+      "layers": 32,
+      "kv_heads": 8,
+      "head_dim": 128,
+      "bytes_per_elem": 2
+    },
+    "gpu": {
+      "kv_gib": 24.0,
+      "t_fixed_s": 0.003,
+      "t_weights_s": 0.01,
+      "t_kv_tok_s": 1e-07,
+      "t_seq_s": 5e-05,
+      "mem_freq_exp": 0.6
+    },
+    "power": {
+      "P_idle": 60,
+      "P_max": 300,
+      "gamma": 2.4,
+      "f_min": 0.35,
+      "P_dark": 80,
+      "eclipse_dod_budget_j": 100000.0,
+      "tiers": [
+        {
+          "name": "idle_0w",
+          "power_w": 0.0,
+          "clock_f": 0.0
+        },
+        {
+          "name": "low_20w",
+          "power_w": 20.0,
+          "clock_f": 0.35
+        },
+        {
+          "name": "high_300w",
+          "power_w": 300.0,
+          "clock_f": 1.0
+        }
+      ]
+    },
+    "thermal": {
+      "T0_C": 25.0,
+      "T_amb_C": 20.0,
+      "T_max_C": 85.0,
+      "R_th": 0.25,
+      "C_th": 150.0
+    },
+    "net": {
+      "link_gbps": {
+        "intra": 10.0,
+        "inter": 0.35,
+        "rs": 5.0
+      },
+      "hop_latency_s": 0.005
+    },
+    "workload": {
+      "arrival_window_s": 400.0,
+      "source_rates_per_min": [
+        48.0,
+        6.0,
+        6.0
+      ],
+      "rate_per_rs_per_min": 20,
+      "p_long": 0.35,
+      "long_out": [
+        18000,
+        36000
+      ],
+      "short_out": [
+        200,
+        1200
+      ],
+      "long_pin": 4000,
+      "short_pin": 500,
+      "long_upload_MB": 500,
+      "short_upload_MB": 50
+    },
+    "slo": {
+      "deadline_factor_long": 1.6,
+      "deadline_factor_short": 4.0,
+      "min_deadline_s": 120,
+      "max_stall_frac": 0.1
+    },
+    "rebalance_invariants": {
+      "interval_s": 5.0,
+      "max_inflight": 24,
+      "max_mig_per_req": 4
+    }
+  },
   "rerun_cmd": "PYTHONPATH=. uv run --frozen python experiments/lab2046_two_stage_proof/exp1_single_placement_limit.py"
 }

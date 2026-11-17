@@ -1,6 +1,6 @@
-arm,n_req,goodput_tok_s,long_slo_pct,badput_tok_s,mig_done_p95_s,peak_bn_mig_flows,e2e_p95_all_s
-Solo_1_Mig,1,600.0,100.0,0.0,5.859999999999999,1,85.65822614789954
-B_none,4,0.0,0.0,1624.2936286386619,,0,199.85
-Simple_Greedy,4,0.0,0.0,2400.0,23.846000000000004,4,109.07745830244437
-Diag_NoShare,4,2400.0,100.0,0.0,6.186,4,91.40883914178133
-CommAware_Spread,4,2400.0,100.0,0.0,12.043500000000003,2,94.9498827580101
+table_group,arm,n_req,goodput_tok_s,long_slo_pct,badput_tok_s,mig_unlocked_p95_s,mig_unfinished_or_failed,peak_bn_mig_flows,censored_completion_count,e2e_p95_all_s
+single_flow_diag,Solo_1_Mig,1,600.0,100.0,0.0,5.86,0,1,0,85.65822614789954
+main_4req,B_none,4,0.0,0.0,1624.2936286386619,,0,0,4,199.85
+main_4req,Simple_Greedy,4,0.0,0.0,2400.0,23.85,0,4,0,109.07745830244437
+main_4req,Diag_NoShare,4,2400.0,100.0,0.0,6.19,0,4,0,91.40883914178133
+main_4req,CommAware_Spread,4,2400.0,100.0,0.0,12.04,0,2,0,94.9498827580101
