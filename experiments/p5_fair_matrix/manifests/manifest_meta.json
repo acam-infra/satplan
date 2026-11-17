@@ -1,0 +1,23 @@
+{
+  "spec_sha256": "c36e4ebbc02d4d7976ca1f2a7ac2313ee5bd5e56eb44b77433e2e528e176c8ef",
+  "trace_sha256": "dda7f8f37ae0e076544f6ada8fd555fbf45cd945deba7dc3d8ec2d2559d3e601",
+  "horizon_s": 600.0,
+  "arrival_window_s": 400.0,
+  "seeds": {
+    "1": {
+      "n_req": 424,
+      "n_long": 148,
+      "sha256": "4769cdf3155c4ef137215e1f7ebc4220a1f5c4c1071d99aa2e25a7483effd8b8"
+    },
+    "2": {
+      "n_req": 391,
+      "n_long": 123,
+      "sha256": "f1e405855599b721045a2c7d083738b13654006c6d30ac9eba2d1b6867bf0d9f"
+    },
+    "3": {
+      "n_req": 394,
+      "n_long": 139,
+      "sha256": "2d0d6abceac7622f770107cb39132ecb0968d617c74aec2b2a29edad903f5a59"
+    }
+  }
+}

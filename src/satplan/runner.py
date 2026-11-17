@@ -54,11 +54,13 @@ def run_simulation(
     seed: int,
     *,
     record: bool = False,
+    requests: list | tuple | None = None,
 ) -> RunResult:
     env = simpy.Environment()
     frame_s = float(cfg.get("frame_s", 10.0))
     rec = Recorder(frame_s) if record else None
-    policy = CompositePolicy(get_placer(placer), get_planner(planner, cfg), RebalanceInvariants.from_cfg(cfg))
+    planner_obj = get_planner(planner, cfg)
+    policy = CompositePolicy(get_placer(placer), planner_obj, RebalanceInvariants.from_cfg(cfg))
     w = CoWorld(
         env,
         trace,
@@ -69,11 +71,15 @@ def run_simulation(
     )
     if rec is not None:
         rec.attach(w)
-    for r in make_requests(cfg, trace, seed):
+    req_list = make_requests(cfg, trace, seed) if requests is None else requests
+    for r in req_list:
         w.submit(r)
     env.run(until=trace.horizon)
+    metrics = summarize(w)
+    if hasattr(planner_obj, "stats_summary"):
+        metrics.update(planner_obj.stats_summary())
     return RunResult(
-        metrics=summarize(w),
+        metrics=metrics,
         frames=rec.frames if rec is not None else [],
         events=rec.events if rec is not None else [],
         good_curve=cumulative_good(w, frame_s * 3) if rec is not None else [],

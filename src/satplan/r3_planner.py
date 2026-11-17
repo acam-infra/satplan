@@ -680,6 +680,43 @@ class R3RuntimePlanner:
         self.solver = solver or R3Solver()
         self.last_result: R3Result | None = None
         self.last_diag: dict[str, Any] = {}
+        self._diag_history: list[dict[str, Any]] = []
+
+    def stats_summary(self) -> dict[str, Any]:
+        n = len(self._diag_history)
+        if n == 0:
+            return {
+                "solver_calls": 0,
+                "solver_optimal": 0,
+                "solver_feasible": 0,
+                "solver_timeout_no_inc": 0,
+                "solver_infeasible": 0,
+                "solver_error": 0,
+                "solver_fallback": 0,
+                "solver_fallback_rate": 0.0,
+                "solver_wall_mean_s": 0.0,
+                "solver_wall_p95_s": 0.0,
+                "solver_wall_max_s": 0.0,
+                "solver_gap_mean": None,
+            }
+        walls = sorted(float(d.get("wall_time_s", 0.0)) for d in self._diag_history)
+        gaps = [float(d["mip_gap"]) for d in self._diag_history if d.get("mip_gap") is not None]
+        p95_idx = min(n - 1, int(0.95 * (n - 1)))
+        fallbacks = sum(1 for d in self._diag_history if d.get("fallback_reason") is not None)
+        return {
+            "solver_calls": n,
+            "solver_optimal": sum(1 for d in self._diag_history if d.get("status") == "optimal"),
+            "solver_feasible": sum(1 for d in self._diag_history if d.get("status") == "feasible_time_limit"),
+            "solver_timeout_no_inc": sum(1 for d in self._diag_history if d.get("status") == "timeout_no_incumbent"),
+            "solver_infeasible": sum(1 for d in self._diag_history if d.get("status") == "proven_infeasible"),
+            "solver_error": sum(1 for d in self._diag_history if d.get("status") == "error"),
+            "solver_fallback": fallbacks,
+            "solver_fallback_rate": fallbacks / n,
+            "solver_wall_mean_s": sum(walls) / n,
+            "solver_wall_p95_s": walls[p95_idx],
+            "solver_wall_max_s": walls[-1],
+            "solver_gap_mean": (sum(gaps) / len(gaps)) if gaps else None,
+        }
 
     def plan(self, view: ForecastView, invariants: RebalanceInvariants) -> PlanAction:
         problem = self.builder.build(view, invariants)
@@ -716,6 +753,7 @@ class R3RuntimePlanner:
                 "stage2_mip_gap": None,
                 "n_migrations": len(action.migrations),
             }
+            self._diag_history.append(self.last_diag)
             return action
 
         result = self.solver.solve(problem)
@@ -753,4 +791,5 @@ class R3RuntimePlanner:
             "n_migrations": len(action.migrations),
             "n_predicted_demands": len(problem.predicted_demands),
         }
+        self._diag_history.append(self.last_diag)
         return action
