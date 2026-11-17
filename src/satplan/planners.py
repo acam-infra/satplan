@@ -185,7 +185,22 @@ PLANNERS: dict[str, type[RuntimePlanner]] = {
 }
 
 
-def get_planner(name: str) -> RuntimePlanner:
+def get_planner(name: str, cfg: dict | None = None) -> RuntimePlanner:
     if name not in PLANNERS:
         raise ValueError(f"unknown planner {name!r}; available: {sorted(PLANNERS)}")
+    if name == "r3_milp" and cfg is not None:
+        from satplan.demand_forecast import DemandForecastConfig
+        from satplan.r3_planner import ProblemBuilder
+
+        r3_cfg = cfg.get("r3") or {}
+        df_cfg = DemandForecastConfig.from_cfg(cfg)
+        builder = ProblemBuilder(
+            horizon_slots=int(r3_cfg.get("horizon_slots", 6)),
+            tail_enabled=bool(r3_cfg.get("tail_enabled", True)),
+            tail_slots=int(r3_cfg.get("tail_slots", 4)),
+            tail_dt_s=float(r3_cfg.get("tail_dt_s", 30.0)),
+            time_limit_s=float(r3_cfg.get("time_limit_s", 0.5)),
+            demand_forecast=df_cfg,
+        )
+        return R3RuntimePlanner(builder=builder)
     return PLANNERS[name]()

@@ -5,11 +5,13 @@ import math
 from typing import TYPE_CHECKING, Any
 
 from satplan.actions import MigrationOrder, PlanAction
+from satplan.demand_forecast import CausalDemandForecaster, DemandForecastConfig
 from satplan.net import allocate_max_min_rates
 from satplan.r3_solver import (
     R3EclipseWindowSpec,
     R3EdgeSpec,
     R3NodeSpec,
+    R3PredictedDemandSpec,
     R3Problem,
     R3RequestSpec,
     R3Result,
@@ -264,6 +266,8 @@ class ProblemBuilder:
         cvar_weight: float = 1e-3,
         stage2_eps: float = 1e-5,
         time_limit_s: float = 0.5,
+        demand_forecast: DemandForecastConfig | None = None,
+        forecaster: CausalDemandForecaster | None = None,
     ) -> None:
         if horizon_slots <= 0:
             raise ValueError("horizon_slots must be positive")
@@ -282,6 +286,8 @@ class ProblemBuilder:
         self.cvar_weight = cvar_weight
         self.stage2_eps = stage2_eps
         self.time_limit_s = time_limit_s
+        self.demand_forecast = demand_forecast or DemandForecastConfig()
+        self.forecaster = forecaster or CausalDemandForecaster()
 
     def build(self, view: ForecastView, invariants: RebalanceInvariants) -> R3Problem:
         ctrl_dt = view.control_period_s
@@ -312,6 +318,7 @@ class ProblemBuilder:
         nodes = self._build_nodes(view, params, decode_reqs, decode_by_node, slot_dts, ctx_rep, kv_ubs)
         edges, routes, dir_edge_idx = self._build_edges_and_routes(view, slot_dts)
         requests = self._build_requests(view, decode_reqs, tiers, dir_edge_idx, kv_ubs)
+        predicted_demands = self._build_predicted_demands(view, slot_dts)
         kv_sorted = sorted(kv_ubs.values(), reverse=True)
         batch_tier_rates = (
             tuple(_node_tier_rates(params, k, sum(kv_sorted[:k])) for k in range(1, len(decode_reqs) + 1))
@@ -328,6 +335,7 @@ class ProblemBuilder:
             tiers=tiers,
             edges=edges,
             requests=requests,
+            predicted_demands=predicted_demands,
             t_amb_C=params.t_amb_C,
             t_max_C=params.t_max_C,
             r_th=params.r_th,
@@ -562,6 +570,35 @@ class ProblemBuilder:
             )
         return tuple(req_specs)
 
+    def _build_predicted_demands(
+        self, view: ForecastView, slot_dts: tuple[float, ...]
+    ) -> tuple[R3PredictedDemandSpec, ...]:
+        if not self.demand_forecast.enabled:
+            return ()
+        bounds = _slot_bounds(view.now, slot_dts)
+        entries = self.forecaster.forecast(view, bounds, self.demand_forecast)
+        specs: list[R3PredictedDemandSpec] = []
+        for idx_d, entry in enumerate(entries):
+            cands = tuple(
+                j for j in view.compute_nodes if view.path_at(entry.origin, j, entry.arrival_time_s) is not None
+            )
+            if not cands:
+                continue
+            specs.append(
+                R3PredictedDemandSpec(
+                    demand_id=idx_d,
+                    origin=entry.origin,
+                    candidate_nodes=cands,
+                    arrival_slot=entry.arrival_slot,
+                    expected_requests=entry.expected_requests,
+                    tokens_per_req=entry.tokens_per_req,
+                    kv_bytes_per_req=entry.kv_bytes_per_req,
+                    deadline_s=entry.deadline_s,
+                    weight=entry.weight,
+                )
+            )
+        return tuple(specs)
+
 
 def _validate_action(
     action: PlanAction,
@@ -713,5 +750,6 @@ class R3RuntimePlanner:
             "stage2_wall_time_s": result.stage2_wall_time_s,
             "stage2_mip_gap": result.stage2_mip_gap,
             "n_migrations": len(action.migrations),
+            "n_predicted_demands": len(problem.predicted_demands),
         }
         return action
