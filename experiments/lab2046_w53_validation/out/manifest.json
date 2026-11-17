@@ -1,7 +1,350 @@
 {
-  "git_sha": "04bfed1f675fcb899dad352bdba7b47c79383e7d",
-  "spec_sha256": "292d929520de8ec1bcd8e276e8bc8cacb6b547ad45963bbce5af2dabfa553d3a",
+  "base_main_sha": "04bfed1f675fcb899dad352bdba7b47c79383e7d",
+  "git_head_sha": "2d1c626a5fc2efd07fa9cc0f71ac285c929fba11",
+  "runner_sha256": "fd1d7443c86e5a6ab2a20b6e552d95d50b55b6dd9e76fc883ec57100b247398e",
+  "common_sha256": "04e8ecfe9f825342b871d27d80ca7f57624b3b93698675fff9a67949e294b6df",
+  "spec_sha256": "b24af66753c8dcbe105adf86b413d2627ad485347c899461ee5f6edc3e366a3c",
   "base_cfg_sha256": "ed3ecc7f1d867574492078404f25ea9c2ca6f9d6a6d2e24d88dbcfa1369e34d2",
   "trace_sha256": "6571b7a00295661ceb621f02f4f6e571c54a1e18def71b4479d7f7672f31e092",
-  "rerun_cmd": "uv run --frozen python experiments/lab2046_w53_validation/run.py"
+  "effective_configs": {
+    "w53_original": {
+      "name": "w53_baseline",
+      "title": "satplan baseline: Walker 53 4x10 + 3 RS (nearest + none)",
+      "trace": "../../satsim/input/traces/coop-w53.trace.json",
+      "scenario": "../../satsim/input/traces/coop-w53.scenario.json",
+      "delivery": "final",
+      "rs_downlink": false,
+      "control_period_s": 2.0,
+      "frame_s": 10.0,
+      "placer": "nearest",
+      "planner": "none",
+      "seeds": [
+        1
+      ],
+      "model": {
+        "layers": 32,
+        "kv_heads": 8,
+        "head_dim": 128,
+        "bytes_per_elem": 2
+      },
+      "gpu": {
+        "kv_gib": 24.0,
+        "t_fixed_s": 0.003,
+        "t_weights_s": 0.01,
+        "t_kv_tok_s": 1e-07,
+        "t_seq_s": 5e-05,
+        "mem_freq_exp": 0.6
+      },
+      "power": {
+        "P_idle": 60,
+        "P_max": 300,
+        "gamma": 2.4,
+        "f_min": 0.35,
+        "P_dark": 80
+      },
+      "thermal": {
+        "T0_C": 25.0,
+        "T_amb_C": 20.0,
+        "T_max_C": 85.0,
+        "R_th": 0.2,
+        "C_th": 150.0
+      },
+      "net": {
+        "link_gbps": {
+          "intra": 10.0,
+          "inter": 1.5,
+          "rs": 5.0
+        },
+        "hop_latency_s": 0.005
+      },
+      "workload": {
+        "arrival_window_s": 400.0,
+        "source_rates_per_min": [
+          48.0,
+          6.0,
+          6.0
+        ],
+        "rate_per_rs_per_min": 20,
+        "p_long": 0.35,
+        "long_out": [
+          18000,
+          36000
+        ],
+        "short_out": [
+          200,
+          1200
+        ],
+        "long_pin": 4000,
+        "short_pin": 500,
+        "long_upload_MB": 500,
+        "short_upload_MB": 50
+      },
+      "slo": {
+        "deadline_factor_long": 1.6,
+        "deadline_factor_short": 4.0,
+        "min_deadline_s": 120,
+        "max_stall_frac": 0.1
+      },
+      "rebalance_invariants": {
+        "interval_s": 5.0,
+        "max_inflight": 24,
+        "max_mig_per_req": 4
+      }
+    },
+    "w53_constrained": {
+      "name": "w53_baseline",
+      "title": "satplan baseline: Walker 53 4x10 + 3 RS (nearest + none)",
+      "trace": "../../satsim/input/traces/coop-w53.trace.json",
+      "scenario": "../../satsim/input/traces/coop-w53.scenario.json",
+      "delivery": "final",
+      "rs_downlink": false,
+      "control_period_s": 2.0,
+      "frame_s": 10.0,
+      "placer": "nearest",
+      "planner": "none",
+      "seeds": [
+        1
+      ],
+      "model": {
+        "layers": 32,
+        "kv_heads": 8,
+        "head_dim": 128,
+        "bytes_per_elem": 2
+      },
+      "gpu": {
+        "kv_gib": 24.0,
+        "t_fixed_s": 0.003,
+        "t_weights_s": 0.01,
+        "t_kv_tok_s": 1e-07,
+        "t_seq_s": 5e-05,
+        "mem_freq_exp": 0.6
+      },
+      "power": {
+        "P_idle": 60,
+        "P_max": 300,
+        "gamma": 2.4,
+        "f_min": 0.35,
+        "P_dark": 80,
+        "eclipse_dod_budget_j": 100000.0,
+        "tiers": [
+          {
+            "name": "idle_0w",
+            "power_w": 0.0,
+            "clock_f": 0.0
+          },
+          {
+            "name": "low_20w",
+            "power_w": 20.0,
+            "clock_f": 0.35
+          },
+          {
+            "name": "high_300w",
+            "power_w": 300.0,
+            "clock_f": 1.0
+          }
+        ]
+      },
+      "thermal": {
+        "T0_C": 25.0,
+        "T_amb_C": 20.0,
+        "T_max_C": 85.0,
+        "R_th": 0.25,
+        "C_th": 150.0
+      },
+      "net": {
+        "link_gbps": {
+          "intra": 10.0,
+          "inter": 0.35,
+          "rs": 5.0
+        },
+        "hop_latency_s": 0.005
+      },
+      "workload": {
+        "arrival_window_s": 400.0,
+        "source_rates_per_min": [
+          48.0,
+          6.0,
+          6.0
+        ],
+        "rate_per_rs_per_min": 20,
+        "p_long": 0.35,
+        "long_out": [
+          18000,
+          36000
+        ],
+        "short_out": [
+          200,
+          1200
+        ],
+        "long_pin": 4000,
+        "short_pin": 500,
+        "long_upload_MB": 500,
+        "short_upload_MB": 50
+      },
+      "slo": {
+        "deadline_factor_long": 1.6,
+        "deadline_factor_short": 4.0,
+        "min_deadline_s": 120,
+        "max_stall_frac": 0.1
+      },
+      "rebalance_invariants": {
+        "interval_s": 5.0,
+        "max_inflight": 24,
+        "max_mig_per_req": 4
+      }
+    }
+  },
+  "kv_conservation_checks": {
+    "w53_original__s1__O_nearest_frozen_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_original__s1__O_nearest_frozen_unlim": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_original__s1__O_least_frozen_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_original__s1__O_nearest_feedback_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_original__s1__O_least_feedback_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_original__s2__O_nearest_frozen_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_original__s2__O_nearest_frozen_unlim": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_original__s2__O_least_frozen_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_original__s2__O_nearest_feedback_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_original__s2__O_least_feedback_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_original__s3__O_nearest_frozen_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_original__s3__O_nearest_frozen_unlim": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_original__s3__O_least_frozen_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_original__s3__O_nearest_feedback_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_original__s3__O_least_feedback_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_constrained__s1__O_nearest_frozen_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_constrained__s1__O_nearest_frozen_unlim": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_constrained__s1__O_least_frozen_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_constrained__s1__O_nearest_feedback_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_constrained__s1__O_least_feedback_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_constrained__s2__O_nearest_frozen_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_constrained__s2__O_nearest_frozen_unlim": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_constrained__s2__O_least_frozen_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_constrained__s2__O_nearest_feedback_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_constrained__s2__O_least_feedback_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_constrained__s3__O_nearest_frozen_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_constrained__s3__O_nearest_frozen_unlim": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_constrained__s3__O_least_frozen_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_constrained__s3__O_nearest_feedback_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
+    "w53_constrained__s3__O_least_feedback_quota": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    }
+  },
+  "rerun_cmd": "PYTHONPATH=. uv run --frozen python experiments/lab2046_w53_validation/run.py"
 }

@@ -600,11 +600,12 @@
         "cs2_tier": 0,
         "cs2_eclipse": false
       }
-    ]
+    ],
+    "kv_conservation": null
   },
   {
     "arm": "C_thermal",
-    "label": "C_thermal: Lift T_max (999C), keep DoD",
+    "label": "C_thermal: Lift T_max (999C), keep DoD & eclipse",
     "metrics": {
       "n_req": 4,
       "n_long": 4,
@@ -1203,11 +1204,12 @@
         "cs2_tier": 0,
         "cs2_eclipse": false
       }
-    ]
+    ],
+    "kv_conservation": null
   },
   {
-    "arm": "C_eclipse",
-    "label": "C_eclipse: Lift Eclipse/DoD, keep T_max=85C",
+    "arm": "C_dod_only",
+    "label": "C_dod_only: Lift DoD budget only, keep eclipse & T_max=85C",
     "metrics": {
       "n_req": 4,
       "n_long": 4,
@@ -1806,11 +1808,616 @@
         "cs2_tier": 0,
         "cs2_eclipse": false
       }
-    ]
+    ],
+    "kv_conservation": null
+  },
+  {
+    "arm": "C_eclipse_all",
+    "label": "C_eclipse_all: Rebuild Trace without eclipse & lift DoD, keep T_max=85C",
+    "metrics": {
+      "n_req": 4,
+      "n_long": 4,
+      "delivered": 4,
+      "good": 4,
+      "good_long": 4,
+      "good_frac": 1.0,
+      "good_long_frac": 1.0,
+      "goodput_tok_s": 1333.3333333333333,
+      "badput_tok_s": 0.0,
+      "waste_ratio": 0.0,
+      "undelivered_frac": 0.0,
+      "e2e_p95_all_s": 158.92206667234854,
+      "long_p95_all_s": 158.92206667234854,
+      "peak_temp_C": 84.82457944024004,
+      "energy_kj": 47.16,
+      "zero_power_s": 542.0,
+      "dod_exhausted_s": 0.0,
+      "upload_fail": 0,
+      "link_GB_hops": 0.2
+    },
+    "requests": [
+      [
+        0,
+        0,
+        1,
+        0.0,
+        0.1,
+        155.3,
+        155.3,
+        1,
+        [
+          1
+        ]
+      ],
+      [
+        1,
+        0,
+        1,
+        5.0,
+        5.1,
+        162.3,
+        162.3,
+        1,
+        [
+          1
+        ]
+      ],
+      [
+        2,
+        0,
+        1,
+        10.0,
+        10.1,
+        168.0,
+        168.0,
+        1,
+        [
+          1
+        ]
+      ],
+      [
+        3,
+        0,
+        1,
+        15.0,
+        15.1,
+        174.1,
+        174.1,
+        1,
+        [
+          1
+        ]
+      ]
+    ],
+    "events": [
+      [
+        0,
+        "arrive",
+        {
+          "req": 0,
+          "o": 0,
+          "long": true
+        }
+      ],
+      [
+        0,
+        "upload",
+        {
+          "req": 0,
+          "path": [
+            0,
+            1
+          ]
+        }
+      ],
+      [
+        0.09,
+        "admit",
+        {
+          "req": 0,
+          "node": 1
+        }
+      ],
+      [
+        5.0,
+        "arrive",
+        {
+          "req": 1,
+          "o": 0,
+          "long": true
+        }
+      ],
+      [
+        5.0,
+        "upload",
+        {
+          "req": 1,
+          "path": [
+            0,
+            1
+          ]
+        }
+      ],
+      [
+        5.08,
+        "admit",
+        {
+          "req": 1,
+          "node": 1
+        }
+      ],
+      [
+        10.0,
+        "arrive",
+        {
+          "req": 2,
+          "o": 0,
+          "long": true
+        }
+      ],
+      [
+        10.0,
+        "upload",
+        {
+          "req": 2,
+          "path": [
+            0,
+            1
+          ]
+        }
+      ],
+      [
+        10.09,
+        "admit",
+        {
+          "req": 2,
+          "node": 1
+        }
+      ],
+      [
+        15.0,
+        "arrive",
+        {
+          "req": 3,
+          "o": 0,
+          "long": true
+        }
+      ],
+      [
+        15.0,
+        "upload",
+        {
+          "req": 3,
+          "path": [
+            0,
+            1
+          ]
+        }
+      ],
+      [
+        15.09,
+        "admit",
+        {
+          "req": 3,
+          "node": 1
+        }
+      ],
+      [
+        155.33,
+        "deliver",
+        {
+          "req": 0,
+          "node": 1,
+          "o": 0,
+          "path": [
+            1
+          ]
+        }
+      ],
+      [
+        162.32,
+        "deliver",
+        {
+          "req": 1,
+          "node": 1,
+          "o": 0,
+          "path": [
+            1
+          ]
+        }
+      ],
+      [
+        168.03,
+        "deliver",
+        {
+          "req": 2,
+          "node": 1,
+          "o": 0,
+          "path": [
+            1
+          ]
+        }
+      ],
+      [
+        174.08,
+        "deliver",
+        {
+          "req": 3,
+          "node": 1,
+          "o": 0,
+          "path": [
+            1
+          ]
+        }
+      ]
+    ],
+    "cs_telemetry": [
+      {
+        "t": 0,
+        "cs1_temp_C": 25.0,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 25.0,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 10.0,
+        "cs1_temp_C": 38.45,
+        "cs1_tier": 2,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 24.04,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 20.0,
+        "cs1_temp_C": 51.69,
+        "cs1_tier": 2,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 23.09,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 30.0,
+        "cs1_temp_C": 61.82,
+        "cs1_tier": 2,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 22.37,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 40.0,
+        "cs1_temp_C": 69.59,
+        "cs1_tier": 2,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 21.82,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 50.0,
+        "cs1_temp_C": 75.54,
+        "cs1_tier": 2,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 21.39,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 60.0,
+        "cs1_temp_C": 80.09,
+        "cs1_tier": 2,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 21.06,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 70.0,
+        "cs1_temp_C": 83.58,
+        "cs1_tier": 2,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.82,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 80.0,
+        "cs1_temp_C": 82.99,
+        "cs1_tier": 2,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.62,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 90.0,
+        "cs1_temp_C": 82.35,
+        "cs1_tier": 2,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.48,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 100.0,
+        "cs1_temp_C": 81.68,
+        "cs1_tier": 1,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.37,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 110.0,
+        "cs1_temp_C": 84.8,
+        "cs1_tier": 2,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.28,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 120.0,
+        "cs1_temp_C": 84.25,
+        "cs1_tier": 2,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.21,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 130.0,
+        "cs1_temp_C": 83.67,
+        "cs1_tier": 2,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.16,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 140.0,
+        "cs1_temp_C": 83.05,
+        "cs1_tier": 2,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.13,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 150.0,
+        "cs1_temp_C": 82.4,
+        "cs1_tier": 2,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.1,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 160.0,
+        "cs1_temp_C": 81.71,
+        "cs1_tier": 1,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.07,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 170.0,
+        "cs1_temp_C": 84.82,
+        "cs1_tier": 2,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.06,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 180.0,
+        "cs1_temp_C": 76.68,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.04,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 190.0,
+        "cs1_temp_C": 63.41,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.03,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 200.0,
+        "cs1_temp_C": 53.25,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.03,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 210.0,
+        "cs1_temp_C": 45.47,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.02,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 220.0,
+        "cs1_temp_C": 39.51,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.01,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 230.0,
+        "cs1_temp_C": 34.94,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.01,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 240.0,
+        "cs1_temp_C": 31.44,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.01,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 250.0,
+        "cs1_temp_C": 28.77,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.01,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 260.0,
+        "cs1_temp_C": 26.71,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.01,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 270.0,
+        "cs1_temp_C": 25.14,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.0,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 280.0,
+        "cs1_temp_C": 23.94,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.0,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 290.0,
+        "cs1_temp_C": 23.02,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.0,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 300.0,
+        "cs1_temp_C": 22.31,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.0,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 310.0,
+        "cs1_temp_C": 21.77,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.0,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 320.0,
+        "cs1_temp_C": 21.36,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.0,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 330.0,
+        "cs1_temp_C": 21.04,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.0,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 340.0,
+        "cs1_temp_C": 20.8,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.0,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      },
+      {
+        "t": 350.0,
+        "cs1_temp_C": 20.61,
+        "cs1_tier": 0,
+        "cs1_dod_rem_j": Infinity,
+        "cs1_eclipse": false,
+        "cs2_temp_C": 20.0,
+        "cs2_tier": 0,
+        "cs2_eclipse": false
+      }
+    ],
+    "kv_conservation": null
   },
   {
     "arm": "C_both",
-    "label": "C_both: Lift T_max & Eclipse/DoD",
+    "label": "C_both: Lift T_max & all eclipse/DoD constraints",
     "metrics": {
       "n_req": 4,
       "n_long": 4,
@@ -2141,10 +2748,10 @@
       },
       {
         "t": 90.0,
-        "cs1_temp_C": 88.65,
+        "cs1_temp_C": 88.3,
         "cs1_tier": 2,
         "cs1_dod_rem_j": Infinity,
-        "cs1_eclipse": true,
+        "cs1_eclipse": false,
         "cs2_temp_C": 20.48,
         "cs2_tier": 0,
         "cs2_eclipse": false
@@ -2154,7 +2761,7 @@
         "cs1_temp_C": 89.87,
         "cs1_tier": 2,
         "cs1_dod_rem_j": Infinity,
-        "cs1_eclipse": true,
+        "cs1_eclipse": false,
         "cs2_temp_C": 20.37,
         "cs2_tier": 0,
         "cs2_eclipse": false
@@ -2164,7 +2771,7 @@
         "cs1_temp_C": 91.07,
         "cs1_tier": 2,
         "cs1_dod_rem_j": Infinity,
-        "cs1_eclipse": true,
+        "cs1_eclipse": false,
         "cs2_temp_C": 20.28,
         "cs2_tier": 0,
         "cs2_eclipse": false
@@ -2174,7 +2781,7 @@
         "cs1_temp_C": 91.99,
         "cs1_tier": 2,
         "cs1_dod_rem_j": Infinity,
-        "cs1_eclipse": true,
+        "cs1_eclipse": false,
         "cs2_temp_C": 20.21,
         "cs2_tier": 0,
         "cs2_eclipse": false
@@ -2184,7 +2791,7 @@
         "cs1_temp_C": 92.69,
         "cs1_tier": 2,
         "cs1_dod_rem_j": Infinity,
-        "cs1_eclipse": true,
+        "cs1_eclipse": false,
         "cs2_temp_C": 20.16,
         "cs2_tier": 0,
         "cs2_eclipse": false
@@ -2194,7 +2801,7 @@
         "cs1_temp_C": 93.23,
         "cs1_tier": 2,
         "cs1_dod_rem_j": Infinity,
-        "cs1_eclipse": true,
+        "cs1_eclipse": false,
         "cs2_temp_C": 20.13,
         "cs2_tier": 0,
         "cs2_eclipse": false
@@ -2204,7 +2811,7 @@
         "cs1_temp_C": 93.65,
         "cs1_tier": 2,
         "cs1_dod_rem_j": Infinity,
-        "cs1_eclipse": true,
+        "cs1_eclipse": false,
         "cs2_temp_C": 20.1,
         "cs2_tier": 0,
         "cs2_eclipse": false
@@ -2214,7 +2821,7 @@
         "cs1_temp_C": 93.96,
         "cs1_tier": 2,
         "cs1_dod_rem_j": Infinity,
-        "cs1_eclipse": true,
+        "cs1_eclipse": false,
         "cs2_temp_C": 20.07,
         "cs2_tier": 0,
         "cs2_eclipse": false
@@ -2224,7 +2831,7 @@
         "cs1_temp_C": 86.62,
         "cs1_tier": 0,
         "cs1_dod_rem_j": Infinity,
-        "cs1_eclipse": true,
+        "cs1_eclipse": false,
         "cs2_temp_C": 20.06,
         "cs2_tier": 0,
         "cs2_eclipse": false
@@ -2234,7 +2841,7 @@
         "cs1_temp_C": 71.03,
         "cs1_tier": 0,
         "cs1_dod_rem_j": Infinity,
-        "cs1_eclipse": true,
+        "cs1_eclipse": false,
         "cs2_temp_C": 20.04,
         "cs2_tier": 0,
         "cs2_eclipse": false
@@ -2244,7 +2851,7 @@
         "cs1_temp_C": 59.08,
         "cs1_tier": 0,
         "cs1_dod_rem_j": Infinity,
-        "cs1_eclipse": true,
+        "cs1_eclipse": false,
         "cs2_temp_C": 20.03,
         "cs2_tier": 0,
         "cs2_eclipse": false
@@ -2254,14 +2861,14 @@
         "cs1_temp_C": 49.93,
         "cs1_tier": 0,
         "cs1_dod_rem_j": Infinity,
-        "cs1_eclipse": true,
+        "cs1_eclipse": false,
         "cs2_temp_C": 20.03,
         "cs2_tier": 0,
         "cs2_eclipse": false
       },
       {
         "t": 210.0,
-        "cs1_temp_C": 41.74,
+        "cs1_temp_C": 42.93,
         "cs1_tier": 0,
         "cs1_dod_rem_j": Infinity,
         "cs1_eclipse": false,
@@ -2409,7 +3016,8 @@
         "cs2_tier": 0,
         "cs2_eclipse": false
       }
-    ]
+    ],
+    "kv_conservation": null
   },
   {
     "arm": "O_quota",
@@ -3053,6 +3661,11 @@
         "cs2_eclipse": false
       }
     ],
+    "kv_conservation": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    },
     "mig_map": {
       "0": 2,
       "1": 2,
@@ -3701,6 +4314,11 @@
         "cs2_tier": 0,
         "cs2_eclipse": false
       }
-    ]
+    ],
+    "kv_conservation": {
+      "max_kv_used_bytes": 0.0,
+      "final_reserved_sum": 0.0,
+      "final_resident_sum": 0.0
+    }
   }
 ]

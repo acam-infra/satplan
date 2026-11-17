@@ -1,5 +1,7 @@
 {
-  "git_sha": "04bfed1f675fcb899dad352bdba7b47c79383e7d",
+  "git_sha": "2d1c626a5fc2efd07fa9cc0f71ac285c929fba11",
+  "runner_sha256": "a48eedcdb72f6dc75340fae32f0f583db9f84eb33f11632e1a3b83b152a1f302",
+  "common_sha256": "04e8ecfe9f825342b871d27d80ca7f57624b3b93698675fff9a67949e294b6df",
   "spec_sha256": "5a8a74d7b0f3b6cbf82675f4a06b23c954d977124cd4745b9d75773f45f48e61",
   "requests_sha256": "08a5eab2c3aa12523525314bac556106e0bfd16ac1845bc404b0be4926b0d969",
   "best_o_mig_map": {
@@ -8,5 +10,10 @@
     "2": 2,
     "3": 2
   },
-  "rerun_cmd": "uv run --frozen python experiments/lab2046_minimal_mechanism/run.py"
+  "kv_conservation_O_quota": {
+    "max_kv_used_bytes": 0.0,
+    "final_reserved_sum": 0.0,
+    "final_resident_sum": 0.0
+  },
+  "rerun_cmd": "PYTHONPATH=. uv run --frozen python experiments/lab2046_minimal_mechanism/run.py"
 }

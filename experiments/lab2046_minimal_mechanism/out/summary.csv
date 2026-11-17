@@ -1,7 +1,8 @@
 arm,label,goodput_tok_s,long_slo_pct,badput_tok_s,undelivered_pct,e2e_p95_all_s,peak_temp_C,dod_exhausted_s,energy_kj
 B,B: Static (nearest + none),0.0,0.0,1333.3333333333333,0.0,260.43055753340417,84.76335360308524,102.0,46.56
-C_thermal,"C_thermal: Lift T_max (999C), keep DoD",0.0,0.0,1333.3333333333333,0.0,258.4834749198918,89.2922290245209,102.0,47.08
-C_eclipse,"C_eclipse: Lift Eclipse/DoD, keep T_max=85C",1333.3333333333333,100.0,0.0,0.0,158.92206667234854,84.82457944024004,0.0,47.16
-C_both,C_both: Lift T_max & Eclipse/DoD,1333.3333333333333,100.0,0.0,0.0,150.2756843465764,94.1173602019073,0.0,49.2
+C_thermal,"C_thermal: Lift T_max (999C), keep DoD & eclipse",0.0,0.0,1333.3333333333333,0.0,258.4834749198918,89.2922290245209,102.0,47.08
+C_dod_only,"C_dod_only: Lift DoD budget only, keep eclipse & T_max=85C",1333.3333333333333,100.0,0.0,0.0,158.92206667234854,84.82457944024004,0.0,47.16
+C_eclipse_all,"C_eclipse_all: Rebuild Trace without eclipse & lift DoD, keep T_max=85C",1333.3333333333333,100.0,0.0,0.0,158.92206667234854,84.82457944024004,0.0,47.16
+C_both,C_both: Lift T_max & all eclipse/DoD constraints,1333.3333333333333,100.0,0.0,0.0,150.2756843465764,94.1173602019073,0.0,49.2
 O_quota,"O: Ideal Zero-Cost Schedule (mig->CS2=[0, 1, 2, 3], quota)",1333.3333333333333,100.0,0.0,0.0,158.9149718047566,84.82163637602666,0.0,51.36
 O_unlim,"O_unlim: Ideal Zero-Cost Schedule (mig->CS2=[0, 1, 2, 3], unlim)",1333.3333333333333,100.0,0.0,0.0,158.9149718047566,84.82163637602666,0.0,51.36
