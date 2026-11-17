@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import simpy
 
-from satplan.actions import MigrationOrder, PlanAction
+from satplan.actions import BackgroundFlowSnapshot, MigrationOrder, MigrationSessionSnapshot, PlanAction
 from satplan.net import FluidNet
 from satplan.power_thermal import PowerThermalModel
 from satplan.timing import iter_time, kv_bytes_per_tok
@@ -50,6 +50,10 @@ class Request:
     mig_target_bytes: float = 0.0
     mig_received_bytes: float = 0.0
     mig_in_flight: bool = False
+    mig_phase: str = "idle"
+    mig_prop_end_t: float | None = None
+    mig_path_edges: tuple[int, ...] = ()
+    mig_path_nodes: tuple[int, ...] = ()
     n_mig: int = 0
 
     @property
@@ -116,6 +120,7 @@ class CoWorld:
         self._node_clock_f: dict[int, float] = {j: 0.0 for j in trace.compute}
         self._pt_last_t: dict[int, float] = {j: 0.0 for j in trace.compute}
         self._inflight_mig = 0
+        self._mig_flows: dict[int, Any] = {}
         self.acc = {"upload_fail": 0}
         self.local_view = LocalStateView(self)
         self.forecast_view = ForecastView(self)
@@ -135,6 +140,76 @@ class CoWorld:
     def net_edge_rates(self) -> list[tuple[int, float]]:
         self.net.advance(self.env.now)
         return sorted(self.net.edge_rates().items())
+
+    def upload_edge_rates(self) -> dict[int, float]:
+        self.net.advance(self.env.now)
+        out: dict[int, float] = {}
+        for f in self.net.flows:
+            if f.tag == "mig":
+                continue
+            for _, _, e in f.hops:
+                out[e] = out.get(e, 0.0) + f.rate
+        return out
+
+    def background_flow_snapshots(self) -> tuple[BackgroundFlowSnapshot, ...]:
+        self.net.advance(self.env.now)
+        snaps: list[BackgroundFlowSnapshot] = []
+        active_reqs: set[int] = set()
+        for f in self.net.flows:
+            if f.tag == "mig":
+                continue
+            req_id = f.meta.get("req")
+            if req_id is not None:
+                active_reqs.add(req_id)
+            req = self._req_by_id.get(req_id) if req_id is not None else None
+            total = float(req.upload_bytes) if req is not None else float(f.sent + f.remaining)
+            origin = req.origin if req is not None else (f.hops[0][0] if f.hops else 0)
+            snaps.append(
+                BackgroundFlowSnapshot(
+                    req_id=req_id,
+                    hops=tuple((int(a), int(b), int(e)) for a, b, e in f.hops),
+                    remaining_bytes=max(0.0, float(f.remaining)),
+                    total_bytes=max(0.0, total),
+                    origin=origin,
+                )
+            )
+        for r in self.reqs:
+            if r.t <= self.env.now and r.state == "wait" and r.upload_bytes > 0.0 and r.i not in active_reqs:
+                snaps.append(
+                    BackgroundFlowSnapshot(
+                        req_id=r.i,
+                        hops=(),
+                        remaining_bytes=float(r.upload_bytes),
+                        total_bytes=float(r.upload_bytes),
+                        origin=r.origin,
+                    )
+                )
+        return tuple(snaps)
+
+    def migration_snapshot(self, req_id: int) -> MigrationSessionSnapshot | None:
+        r = self._req_by_id.get(req_id)
+        if r is None or r.mig_dst is None:
+            return None
+        f = self._mig_flows.get(req_id)
+        if f is not None:
+            self.net.advance(self.env.now)
+            chunk_sent = max(0.0, float(f.sent))
+            chunk_rem = max(0.0, float(f.remaining))
+        else:
+            chunk_sent = 0.0
+            chunk_rem = 0.0
+        prop_rem = 0.0 if r.mig_prop_end_t is None else max(0.0, r.mig_prop_end_t - self.env.now)
+        return MigrationSessionSnapshot(
+            phase=r.mig_phase,
+            dst=r.mig_dst,
+            target_bytes=r.mig_target_bytes,
+            received_bytes=r.mig_received_bytes,
+            chunk_sent_bytes=chunk_sent,
+            chunk_rem_bytes=chunk_rem,
+            prop_rem_s=prop_rem,
+            path_edges=r.mig_path_edges,
+            path_nodes=r.mig_path_nodes,
+        )
 
     @property
     def upload_fail_count(self) -> int:
@@ -245,15 +320,32 @@ class CoWorld:
         r.mig_dst = None
         r.mig_target_bytes = 0.0
         r.mig_received_bytes = 0.0
+        r.mig_phase = "idle"
+        r.mig_prop_end_t = None
+        r.mig_path_edges = ()
+        r.mig_path_nodes = ()
 
     def _run_migration(self, r: Request, p: tuple[list[int], list[int]], nbytes: float):
         try:
             f = self.net.add("mig", p[0], p[1], nbytes, req=r.i)
+            self._mig_flows[r.i] = f
+            r.mig_phase = "sending"
+            r.mig_path_edges = tuple(p[1])
+            r.mig_path_nodes = tuple(p[0])
             self.log("mig_start", req=r.i, src=r.node, dst=r.mig_dst, bytes=nbytes)
             yield f.done
+            self._mig_flows.pop(r.i, None)
             r.mig_received_bytes += f.sent if f.failed else nbytes
             if not f.failed and p[1] and self.hop_lat > 0.0:
-                yield self.env.timeout(self.hop_lat * len(p[1]))
+                prop_s = self.hop_lat * len(p[1])
+                r.mig_phase = (
+                    "propagating_unlock"
+                    if r.mig_received_bytes >= r.mig_target_bytes - 1e-6
+                    else "propagating_chunk"
+                )
+                r.mig_prop_end_t = self.env.now + prop_s
+                yield self.env.timeout(prop_s)
+                r.mig_prop_end_t = None
             if r.state != "decode":
                 self._clear_migration(r)
                 return
@@ -270,8 +362,12 @@ class CoWorld:
                 self.wake_node(dst)
                 self.log("mig_unlock", req=r.i, src=src, dst=dst)
         finally:
+            self._mig_flows.pop(r.i, None)
+            r.mig_prop_end_t = None
             r.mig_in_flight = False
             self._inflight_mig -= 1
+            if r.mig_dst is not None:
+                r.mig_phase = "resumable"
 
     def _settle_pt(self, j: int, now: float, *, is_eclipse: bool) -> None:
         dt = now - self._pt_last_t[j]

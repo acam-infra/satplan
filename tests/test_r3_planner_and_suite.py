@@ -96,7 +96,7 @@ def test_problem_builder_maps_forecast_view_and_excludes_rs_edges() -> None:
     prob = builder.build(w.forecast_view, inv)
 
     assert prob.horizon_slots == 4
-    assert prob.dt_s == 5.0
+    assert prob.dt_s == 6.0  # ceil(5.0 / 2.0) * 2.0 = 6.0s effective CompositePolicy cadence
     assert [n.node_id for n in prob.nodes] == [1, 2, 3]
     assert len(prob.tiers) == 3
     # 2 compute-compute edges (1-2, 2-3) -> 4 directed R3EdgeSpecs (RS-0 edges excluded)

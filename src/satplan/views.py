@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from satplan.trace import INF
 
 if TYPE_CHECKING:
+    from satplan.actions import BackgroundFlowSnapshot, MigrationSessionSnapshot
     from satplan.power_thermal import PhysicsParams
     from satplan.world import CoWorld, Request
 
@@ -34,6 +35,14 @@ class LocalStateView:
     @property
     def kv_cap(self) -> float:
         return self._w.kv_cap
+
+    @property
+    def hop_latency_s(self) -> float:
+        return self._w.hop_lat
+
+    @property
+    def control_period_s(self) -> float:
+        return self._w.pt.period
 
     @property
     def t_max_C(self) -> float:
@@ -84,6 +93,12 @@ class LocalStateView:
 
     def edge_rates(self) -> dict[int, float]:
         return dict(self._w.net_edge_rates())
+
+    def upload_edge_rates(self) -> dict[int, float]:
+        return self._w.upload_edge_rates()
+
+    def migration_snapshot(self, req_id: int) -> MigrationSessionSnapshot | None:
+        return self._w.migration_snapshot(req_id)
 
     def edge_utilization(self) -> dict[int, float]:
         rates = self.edge_rates()
@@ -190,6 +205,15 @@ class ForecastView(LocalStateView):
 
     def edge_up_until(self, e: int, t: float) -> float:
         return self._w.trace.edge_up_until(e, t)
+
+    def next_edge_up(self, e: int, t: float) -> float:
+        return self._w.trace.next_edge_up(e, t)
+
+    def background_flow_snapshots(self) -> tuple[BackgroundFlowSnapshot, ...]:
+        return self._w.background_flow_snapshots()
+
+    def path_at(self, s: int, d: int, t: float) -> tuple[list[int], list[int]] | None:
+        return self._w.trace.path(s, d, t)
 
     def next_conn(self, o: int, j: int, t: float) -> float:
         return self._w.trace.next_conn(o, j, t)
