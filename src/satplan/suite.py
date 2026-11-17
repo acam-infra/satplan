@@ -26,6 +26,8 @@ _SUMMARY_COLS: tuple[tuple[str, str, float, bool, int], ...] = (
     ("badput_tok_s", "Badput(tok/s) ↓", 1.0, False, 2),
     ("e2e_p95_all_s", "E2E P95(s) ↓", 1.0, False, 1),
     ("peak_temp_C", "峰值温度(°C) ↓", 1.0, False, 1),
+    ("zero_power_frac", "0W 空闲(%) ↑", 100.0, True, 2),
+    ("energy_kj", "总能耗(kJ) ↓", 1.0, False, 1),
     ("link_GB_hops", "链路流量(GB·hop) ↓", 1.0, False, 3),
 )
 
@@ -53,6 +55,7 @@ _CSV_FIELDS: tuple[str, ...] = (
     "peak_temp_C",
     "energy_kj",
     "zero_power_s",
+    "zero_power_frac",
     "dod_exhausted_s",
     "upload_fail",
     "link_GB_hops",
@@ -99,8 +102,12 @@ def _render_markdown(
     placers: Sequence[str],
     planners: Sequence[str],
     summary_rows: list[dict[str, Any]],
+    *,
+    baseline_cell: tuple[str, str] = ("nearest", "none"),
 ) -> str:
     by_cell = {(r["placer"], r["planner"]): r for r in summary_rows}
+    base_label = f"{baseline_cell[0]}+{baseline_cell[1]}"
+    base_row = by_cell.get(baseline_cell)
     lines = [
         f"# {cfg.get('name', 'satplan')} 3×3 Cross-Matrix Summary",
         "",
@@ -109,7 +116,7 @@ def _render_markdown(
             f"- **rebalance_invariants**: `interval_s={invariants.interval_s}`, "
             f"`max_inflight={invariants.max_inflight}`, `max_mig_per_req={invariants.max_mig_per_req}`"
         ),
-        "- **基准说明**: 每个 `Placer` 行组内以 `none` 为 100% 基准，括号内为相对同行 `none` 的百分比变化。",
+        f"- **基准说明**: 以 `{base_label}`（静态 `place_once`）为 100% 基准，括号内为相对 `{base_label}` 的百分比变化。",
         "",
     ]
 
@@ -117,16 +124,17 @@ def _render_markdown(
     lines.append("| " + " | ".join(headers) + " |")
     lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
 
+    all_rows = [by_cell[(pl, pn)] for pl in placers for pn in planners if (pl, pn) in by_cell]
+    best_val: dict[str, float] = {}
+    for key, _, _, higher_better, _ in _SUMMARY_COLS:
+        vals = [float(r[key]) for r in all_rows]
+        if vals:
+            best_val[key] = max(vals) if higher_better else min(vals)
+
     for placer in placers:
         group = [by_cell[(placer, p)] for p in planners if (placer, p) in by_cell]
         if not group:
             continue
-        best_val: dict[str, float] = {}
-        for key, _, _, higher_better, _ in _SUMMARY_COLS:
-            vals = [float(r[key]) for r in group]
-            best_val[key] = max(vals) if higher_better else min(vals)
-
-        base_row = by_cell.get((placer, "none"))
         for planner in planners:
             row = by_cell.get((placer, planner))
             if row is None:
@@ -134,8 +142,9 @@ def _render_markdown(
             cells = [placer, planner]
             for key, _, scale, _, decimals in _SUMMARY_COLS:
                 val = float(row[key])
-                base = None if (planner == "none" or base_row is None) else float(base_row[key])
-                is_best = abs(val - best_val[key]) <= 1e-12
+                is_base_row = (placer, planner) == baseline_cell
+                base = None if (is_base_row or base_row is None) else float(base_row[key])
+                is_best = key in best_val and abs(val - best_val[key]) <= 1e-12
                 cells.append(_fmt_cell(val, base, scale=scale, decimals=decimals, is_best=is_best))
             lines.append("| " + " | ".join(cells) + " |")
 
