@@ -11,10 +11,8 @@ from pathlib import Path
 from typing import Any
 
 import simpy
-
 from satplan.demand_forecast import DemandForecastConfig, PublishedDemandPlan
 from satplan.metrics import summarize
-from satplan.placers import get_placer
 from satplan.planners import CompositePolicy, RebalanceInvariants, get_planner
 from satplan.r3_planner import ProblemBuilder, R3RuntimePlanner
 from satplan.runner import load_config, run_simulation
