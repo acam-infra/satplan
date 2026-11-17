@@ -89,6 +89,11 @@ class R3Problem:
     cvar_weight: float = 1e-3
     stage2_eps: float = 1e-5
     time_limit_s: float = 5.0
+    slot_dts_s: tuple[float, ...] | None = None
+    near_slots: int | None = None
+
+    def slot_dt(self, t: int) -> float:
+        return self.dt_s if self.slot_dts_s is None else self.slot_dts_s[t]
 
 
 @dataclass(frozen=True)
@@ -113,11 +118,26 @@ class R3Result:
     stage2_mip_gap: float | None = None
 
 
+def _compute_slot_bounds(slot_dts: tuple[float, ...]) -> tuple[tuple[float, ...], tuple[float, ...], float]:
+    starts: list[float] = []
+    ends: list[float] = []
+    acc = 0.0
+    for dt_t in slot_dts:
+        starts.append(acc)
+        acc += dt_t
+        ends.append(acc)
+    return tuple(starts), tuple(ends), acc
+
+
 class _VarLayout:
     """Contiguous variable index layout for the R3 MILP."""
 
     def __init__(self, problem: R3Problem) -> None:
         self.H = problem.horizon_slots
+        self.slot_dts: tuple[float, ...] = (
+            problem.slot_dts_s if problem.slot_dts_s is not None else (problem.dt_s,) * self.H
+        )
+        self.slot_starts, self.slot_ends, self.total_horizon_s = _compute_slot_bounds(self.slot_dts)
         self.J = len(problem.nodes)
         self.L = len(problem.tiers)
         self.E = len(problem.edges)
@@ -175,7 +195,7 @@ class _VarLayout:
         self._dod_start_map: dict[tuple[int, int, int], int] = {}
         self._a_ecl_by_slot: dict[tuple[int, int, int], list[tuple[int, float]]] = {}
         self._ecl_win_slots: dict[tuple[int, int], list[tuple[int, float]]] = {}
-        ctrl_dt = problem.dt_s if problem.control_period_s is None else problem.control_period_s
+        ctrl_dt = self.slot_dts[0] if problem.control_period_s is None else problem.control_period_s
         for j, node in enumerate(problem.nodes):
             s_s, e_wins = _resolve_node_power_windows(problem, node)
             sun_j = list(s_s)
@@ -200,7 +220,7 @@ class _VarLayout:
                     for l_i, tier in enumerate(problem.tiers):
                         if not (tier.power_w > 0.0 or tier.rate_tok_s > 0.0):
                             continue
-                        extra_dur = dur if ctrl_dt < problem.dt_s - 1e-9 else 0.0
+                        extra_dur = dur if ctrl_dt < self.slot_dts[t] - 1e-9 else 0.0
                         if tier.power_w * (ctrl_dt + extra_dur) > budget + 1e-9:
                             continue
                         key = (j, w_idx, k, l_i)
@@ -372,7 +392,7 @@ def _resolve_node_power_windows(
     sunlit_s = (
         node.sunlit_s
         if node.sunlit_s is not None
-        else tuple(0.0 if ecl else problem.dt_s for ecl in node.is_eclipse)
+        else tuple(0.0 if ecl else problem.slot_dt(t) for t, ecl in enumerate(node.is_eclipse))
     )
     if node.eclipse_windows is not None:
         return sunlit_s, node.eclipse_windows
@@ -383,7 +403,7 @@ def _resolve_node_power_windows(
                 if (w_start == 0 and node.init_dod_remaining_j is not None)
                 else problem.eclipse_dod_budget_j
             ),
-            slot_durations_s=tuple((t, problem.dt_s) for t in range(w_start, w_end)),
+            slot_durations_s=tuple((t, problem.slot_dt(t)) for t in range(w_start, w_end)),
         )
         for w_start, w_end in _eclipse_windows(node.is_eclipse)
     )
@@ -546,14 +566,18 @@ class R3Solver:
 
         cb.add([(col, float(c1[col])) for col in np.nonzero(c1)[0]], -math.inf, -v1_star + problem.stage2_eps)
         c2 = np.zeros(idx.total, dtype=float)
-        for r in range(idx.R):
+        for r, req in enumerate(problem.requests):
+            g_tie = -1e-6 / max(1.0, req.remaining_tokens)
             for e in range(idx.E):
                 for t in range(idx.H):
                     c2[idx.b_edge(r, e, t)] = 1.0
             for j in range(idx.J):
                 for t in range(idx.H):
-                    # Break exact ties against holding destination KV / migrating earlier than needed
+                    # Break exact ties against holding destination KV / migrating earlier than needed,
+                    # and against idling/pausing uncompleted work when y(r) == 0.
                     c2[idx.m(r, j, t)] = 1e-4 * (idx.H - t)
+                    c2[idx.h(r, j, t)] = 1e-3
+                    c2[idx.g(r, j, t)] = g_tie
 
         t2_0 = time.perf_counter()
         res2 = None
@@ -620,6 +644,10 @@ class R3Solver:
     def _validate(self, problem: R3Problem) -> None:
         if problem.horizon_slots <= 0 or problem.dt_s <= 0.0:
             raise ValueError("horizon_slots and dt_s must be positive")
+        if problem.slot_dts_s is not None and (
+            len(problem.slot_dts_s) != problem.horizon_slots or any(d <= 0.0 for d in problem.slot_dts_s)
+        ):
+            raise ValueError("slot_dts_s length must match horizon_slots and all entries must be positive")
         if problem.control_period_s is not None and problem.control_period_s <= 0.0:
             raise ValueError("control_period_s must be positive")
         if not problem.nodes or not problem.tiers:
@@ -659,9 +687,9 @@ class R3Solver:
         integrality[idx.off_e_use : idx.off_b_edge] = 1
 
         tau = problem.r_th * problem.c_th
-        alpha = math.exp(-problem.dt_s / tau) if tau > 0.0 else 0.0
+        alpha0 = math.exp(-idx.slot_dts[0] / tau) if tau > 0.0 else 0.0
         for j, node in enumerate(problem.nodes):
-            t_cool_0 = alpha * node.init_temp_C + (1.0 - alpha) * problem.t_amb_C
+            t_cool_0 = alpha0 * node.init_temp_C + (1.0 - alpha0) * problem.t_amb_C
             for t in range(idx.H):
                 col = idx.theta(j, t)
                 lb[col] = -math.inf
@@ -748,26 +776,30 @@ class R3Solver:
             ub[idx.init_prop_rem(r, t)] = 0.0
             ub[idx.arc_frozen(r, t)] = 0.0
         if snap.phase == "propagating_chunk":
-            block_slots = max(1, math.ceil(snap.prop_rem_s / problem.dt_s - 1e-9))
+            block_slots = next(
+                (k + 1 for k, end_s in enumerate(idx.slot_ends) if end_s >= snap.prop_rem_s - 1e-9),
+                idx.H,
+            )
             for t in range(min(idx.H, block_slots)):
                 ub[idx.tx(r, t)] = 0.0
         elif snap.phase == "propagating_unlock":
             ub[idx.tx(r, 0)] = 0.0
             lb[idx.tx_complete(r, 0)] = 1.0
             ub[idx.tx_just_done(r, 0)] = 0.0
-            lb[idx.prop_rem(r, 0)] = max(0.0, snap.prop_rem_s - problem.dt_s)
+            lb[idx.prop_rem(r, 0)] = max(0.0, snap.prop_rem_s - idx.slot_dts[0])
 
     @staticmethod
     def _add_eclipse_dod_constraints(
         problem: R3Problem, idx: _VarLayout, j: int, cb: _ConstraintBuilder
     ) -> None:
-        ctrl_dt = problem.dt_s if problem.control_period_s is None else problem.control_period_s
+        ctrl_dt = idx.slot_dts[0] if problem.control_period_s is None else problem.control_period_s
         for w_idx, win in enumerate(idx.ecl_windows[j]):
             slots = idx._ecl_win_slots.get((j, w_idx))
             if not slots or win.budget_j is None:
                 continue
             budget = win.budget_j
             for k, (t, dur) in enumerate(slots):
+                dt_t = idx.slot_dts[t]
                 d_k = idx._dod_start_map[(j, w_idx, k)]
                 a_vars = [
                     (l_i, problem.tiers[l_i], idx._a_ecl_map[(j, w_idx, k, l_i)])
@@ -776,7 +808,7 @@ class R3Solver:
                 ]
                 if a_vars:
                     cb.add([(a_var, 1.0) for _, _, a_var in a_vars], -math.inf, 1.0)
-                if idx.sunlit_s[j][t] <= 1e-12 or ctrl_dt < problem.dt_s - 1e-9:
+                if idx.sunlit_s[j][t] <= 1e-12 or ctrl_dt < dt_t - 1e-9:
                     for l_i, tier in enumerate(problem.tiers):
                         if not (tier.power_w > 0.0 or tier.rate_tok_s > 0.0):
                             continue
@@ -785,7 +817,7 @@ class R3Solver:
                             cb.add([(idx.z(j, l_i, t), 1.0)], 0.0, 0.0)
                         else:
                             cb.add([(idx.z(j, l_i, t), 1.0), (a_var, -1.0)], -math.inf, 0.0)
-                extra_dur = dur if ctrl_dt < problem.dt_s - 1e-9 else 0.0
+                extra_dur = dur if ctrl_dt < dt_t - 1e-9 else 0.0
                 for a_pos, (l_i, tier, a_var) in enumerate(a_vars):
                     req_dod = tier.power_w * (ctrl_dt + extra_dur)
                     cb.add([(a_var, 1.0)] + [(idx.z(j, m, t), -1.0) for m in range(l_i, idx.L)], -math.inf, 0.0)
@@ -807,9 +839,7 @@ class R3Solver:
 
     def _add_power_thermal_constraints(self, problem: R3Problem, idx: _VarLayout, cb: _ConstraintBuilder) -> None:
         tau = problem.r_th * problem.c_th
-        alpha = math.exp(-problem.dt_s / tau) if tau > 0.0 else 0.0
-        one_minus_alpha = 1.0 - alpha
-        ctrl_dt = problem.dt_s if problem.control_period_s is None else problem.control_period_s
+        ctrl_dt = idx.slot_dts[0] if problem.control_period_s is None else problem.control_period_s
         alpha_ctrl = math.exp(-ctrl_dt / tau) if tau > 0.0 else 0.0
         max_t_eq = max((problem.t_amb_C + problem.r_th * t.power_w for t in problem.tiers), default=problem.t_amb_C)
         zero_tiers = [l_i for l_i, t in enumerate(problem.tiers) if t.power_w <= 0.0 and t.rate_tok_s <= 0.0]
@@ -817,6 +847,9 @@ class R3Solver:
         for j, node in enumerate(problem.nodes):
             m_th = max(0.0, max(node.init_temp_C, problem.t_max_C, max_t_eq) - problem.t_max_C) + 1.0
             for t in range(idx.H):
+                dt_t = idx.slot_dts[t]
+                alpha = math.exp(-dt_t / tau) if tau > 0.0 else 0.0
+                one_minus_alpha = 1.0 - alpha
                 cb.add([(idx.z(j, l_i, t), 1.0) for l_i in range(idx.L)], 1.0, 1.0)
                 terms: list[tuple[int, float]] = [(idx.theta(j, t), 1.0)]
                 if t > 0:
@@ -830,14 +863,14 @@ class R3Solver:
                 offset_s = (
                     node.max_event_offset_s[t]
                     if node.max_event_offset_s is not None
-                    else (problem.dt_s if ctrl_dt < problem.dt_s - 1e-9 else 0.0)
+                    else (dt_t if ctrl_dt < dt_t - 1e-9 else 0.0)
                 )
                 alpha_tot = math.exp(-(ctrl_dt + offset_s) / tau) if tau > 0.0 else 0.0
                 for l_i, tier in enumerate(problem.tiers):
                     if tier.power_w <= 0.0:
                         continue
                     t_eq = problem.t_amb_C + problem.r_th * tier.power_w
-                    for a_eff in (alpha_ctrl, alpha_tot) if offset_s > 1e-12 or ctrl_dt > problem.dt_s + 1e-9 else ():
+                    for a_eff in (alpha_ctrl, alpha_tot) if offset_s > 1e-12 or ctrl_dt > dt_t + 1e-9 else ():
                         rhs_adm = problem.t_max_C - (1.0 - a_eff) * t_eq + m_th
                         if t == 0:
                             if a_eff * node.init_temp_C + (1.0 - a_eff) * t_eq > problem.t_max_C + 1e-9:
@@ -899,6 +932,7 @@ class R3Solver:
             )
             max_rate_j = max(rates_j, default=0.0)
             for t in range(idx.H):
+                dt_t = idx.slot_dts[t]
                 kv_terms = []
                 for r, req in enumerate(problem.requests):
                     res_bytes = req.kv_bytes if req.reserved_kv_bytes is None else req.reserved_kv_bytes
@@ -909,7 +943,7 @@ class R3Solver:
                 for r, req in enumerate(problem.requests):
                     self._add_slot_rate_cap(idx, cb, j, t, r, rates_j)
                     cb.add(
-                        [(idx.g(r, j, t), 1.0), (idx.x(r, j, t), -min(req.remaining_tokens, max_rate_j * problem.dt_s))],
+                        [(idx.g(r, j, t), 1.0), (idx.x(r, j, t), -min(req.remaining_tokens, max_rate_j * dt_t))],
                         -math.inf,
                         0.0,
                     )
@@ -923,7 +957,7 @@ class R3Solver:
                         )
                         k_end = (idx.B_ks[b_idx + 1] - 1) if (b_idx + 1 < len(idx.B_ks)) else idx.R
                         rates_k = problem.batch_tier_rates[min(k_end - 1, len(problem.batch_tier_rates) - 1)]
-                        m_big = max(max_rate_j, max(rates_k, default=0.0)) * problem.dt_s
+                        m_big = max(max_rate_j, max(rates_k, default=0.0)) * dt_t
                         for r in range(idx.R):
                             self._add_slot_rate_cap(
                                 idx, cb, j, t, r, rates_k, extra_lhs=((idx.b_ge(j, t, b_idx), m_big),), rhs=m_big
@@ -931,7 +965,7 @@ class R3Solver:
 
         for r, req in enumerate(problem.requests):
             cb.add([(idx.comp(r, t), 1.0) for t in range(idx.H)], -math.inf, 1.0)
-            valid_slots = [t for t in range(idx.H) if (t + 1) * problem.dt_s <= req.deadline_s + 1e-9]
+            valid_slots = [t for t in range(idx.H) if idx.slot_ends[t] <= req.deadline_s + 1e-9]
             if valid_slots:
                 cb.add([(idx.y(r), 1.0)] + [(idx.comp(r, t), -1.0) for t in valid_slots], -math.inf, 0.0)
             else:
@@ -951,7 +985,8 @@ class R3Solver:
         cb: _ConstraintBuilder,
     ) -> None:
         max_hops = max((len(eids) for eids in routes.values()), default=0)
-        m_prop = max(problem.dt_s, max_hops * problem.hop_latency_s) + problem.dt_s
+        max_slot_dt = max(idx.slot_dts)
+        m_prop = max(max_slot_dt, max_hops * problem.hop_latency_s) + max_slot_dt
         for t in range(idx.H):
             if problem.max_inflight is not None:
                 inf_terms = [(idx.m(r, j, t), 1.0) for r in range(idx.R) for j in range(idx.J)]
@@ -1011,13 +1046,14 @@ class R3Solver:
 
         # Propagation remaining time
         if problem.hop_latency_s > 0.0:
+            dt_t = idx.slot_dts[t]
             prop_terms = [
                 (idx.prop_rem(r, t), 1.0),
-                (idx.tx_frac(r, t), -problem.dt_s),
+                (idx.tx_frac(r, t), -dt_t),
                 (idx.tx_just_done(r, t), -m_prop),
                 (idx.flow_hops(r, t), -problem.hop_latency_s),
             ]
-            cb.add(prop_terms, -problem.dt_s - m_prop, math.inf)
+            cb.add(prop_terms, -dt_t - m_prop, math.inf)
             if t >= 1:
                 cb.add(
                     [
@@ -1026,7 +1062,7 @@ class R3Solver:
                         (idx.tx_complete(r, t), -m_prop),
                         (idx.tx_just_done(r, t), m_prop),
                     ],
-                    -problem.dt_s - m_prop,
+                    -dt_t - m_prop,
                     math.inf,
                 )
 
@@ -1189,7 +1225,8 @@ class R3Solver:
     ) -> None:
         c_rem = max(0.0, snap.chunk_rem_bytes)
         l_prop = problem.hop_latency_s * len(frozen_edges)
-        m_prop = max(problem.dt_s, l_prop) + problem.dt_s
+        max_slot_dt = max(idx.slot_dts)
+        m_prop = max(max_slot_dt, l_prop) + max_slot_dt
         sum_b = [(idx.b(r, tau), 1.0) for tau in range(t + 1)]
         cb.add(sum_b + [(idx.init_chunk_done(r, t), -c_rem)], 0.0, math.inf)
         if t == 0:
@@ -1217,9 +1254,10 @@ class R3Solver:
                     m_prop,
                 )
         if l_prop > 0.0:
+            dt_t = idx.slot_dts[t]
             cb.add(
-                [(idx.init_prop_rem(r, t), 1.0), (idx.tx_frac(r, t), -problem.dt_s), (idx.init_chunk_just_done(r, t), -m_prop)],
-                l_prop - problem.dt_s - m_prop,
+                [(idx.init_prop_rem(r, t), 1.0), (idx.tx_frac(r, t), -dt_t), (idx.init_chunk_just_done(r, t), -m_prop)],
+                l_prop - dt_t - m_prop,
                 math.inf,
             )
             if t >= 1:
@@ -1230,7 +1268,7 @@ class R3Solver:
                         (idx.init_chunk_done(r, t), -m_prop),
                         (idx.init_chunk_just_done(r, t), m_prop),
                     ],
-                    -problem.dt_s - m_prop,
+                    -dt_t - m_prop,
                     math.inf,
                 )
 
@@ -1243,9 +1281,10 @@ class R3Solver:
         edge: R3EdgeSpec,
     ) -> None:
         for t in range(idx.H):
+            dt_t = idx.slot_dts[t]
             bg = 0.0 if edge.bg_bps is None else edge.bg_bps[t]
-            tot_cap_bytes = (problem.dt_s / 8.0) * edge.tot_bps[t]
-            cap_bytes = (problem.dt_s / 8.0) * max(0.0, edge.tot_bps[t] - bg)
+            tot_cap_bytes = (dt_t / 8.0) * edge.tot_bps[t]
+            cap_bytes = (dt_t / 8.0) * max(0.0, edge.tot_bps[t] - bg)
             bg_frac = min(1.0, bg / edge.tot_bps[t]) if edge.tot_bps[t] > 0.0 else 0.0
             cb.add([(idx.b_edge(r, e_i, t), 1.0) for r in range(idx.R)], -math.inf, cap_bytes)
 
@@ -1293,11 +1332,11 @@ class R3Solver:
             cb.add(terms, bg_frac - 1.0, math.inf)
 
     def _add_cvar_constraints(self, problem: R3Problem, idx: _VarLayout, cb: _ConstraintBuilder) -> None:
-        miss_lat = (problem.horizon_slots + 1) * problem.dt_s
+        miss_lat = idx.total_horizon_s + idx.slot_dts[-1]
         for r, req in enumerate(problem.requests):
             terms: list[tuple[int, float]] = [(idx.xi(r), 1.0), (idx.eta(), 1.0)]
             for t in range(idx.H):
-                coeff = (t + 1) * problem.dt_s - miss_lat
+                coeff = idx.slot_ends[t] - miss_lat
                 terms.append((idx.comp(r, t), -coeff))
             cb.add(terms, req.elapsed_s + miss_lat, math.inf)
 

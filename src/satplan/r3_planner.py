@@ -107,11 +107,20 @@ def _refresh_bg_flow_states(  # noqa: PLR0913
     return active, next_topo
 
 
+def _slot_bounds(t0: float, slot_dts: tuple[float, ...]) -> tuple[tuple[float, float], ...]:
+    bounds: list[tuple[float, float]] = []
+    cur = t0
+    for dt_t in slot_dts:
+        nxt = cur + dt_t
+        bounds.append((cur, nxt))
+        cur = nxt
+    return tuple(bounds)
+
+
 def _sim_bg_bytes_dir(
     flows: tuple[Any, ...],
     view: ForecastView,
-    horizon_slots: int,
-    dt_s: float,
+    bounds: tuple[tuple[float, float], ...],
 ) -> tuple[dict[tuple[int, int, int], float], dict[int, float]]:
     cur_hops = [f.hops for f in flows]
     rem = [float(f.remaining_bytes) for f in flows]
@@ -119,9 +128,8 @@ def _sim_bg_bytes_dir(
     first_fail_t: dict[int, float] = {}
     bytes_dir: dict[tuple[int, int, int], float] = {}
 
-    for t in range(horizon_slots):
-        tau = view.now + t * dt_s
-        slot_end = view.now + (t + 1) * dt_s
+    for t, (slot_start, slot_end) in enumerate(bounds):
+        tau = slot_start
         while tau < slot_end - 1e-12:
             active, next_topo = _refresh_bg_flow_states(
                 flows, cur_hops, done, rem, first_fail_t, view, tau, slot_end
@@ -191,16 +199,13 @@ def _add_joint_retry_bg_bytes(
     first_fail_t: dict[int, float],
     bytes_dir: dict[tuple[int, int, int], float],
     view: ForecastView,
-    horizon_slots: int,
-    dt_s: float,
+    bounds: tuple[tuple[float, float], ...],
 ) -> None:
     dir_edge_idx = {(u, v): e_idx for e_idx, (u, v) in enumerate(view.edges)}
     dir_edge_idx.update({(v, u): e_idx for e_idx, (u, v) in enumerate(view.edges)})
     rem_retry: dict[tuple[int, int, int], float] = {}
 
-    for t in range(horizon_slots):
-        slot_start = view.now + t * dt_s
-        slot_end = slot_start + dt_s
+    for t, (slot_start, slot_end) in enumerate(bounds):
         contribs: dict[tuple[int, int], list[tuple[int, float]]] = {}
         for i, t_fail in first_fail_t.items():
             if t_fail >= slot_end - 1e-12:
@@ -232,26 +237,29 @@ def _add_joint_retry_bg_bytes(
 
 def _predict_bg_dir_bps(
     view: ForecastView,
-    horizon_slots: int,
-    dt_s: float,
+    slot_dts: tuple[float, ...],
 ) -> dict[tuple[int, int, int], float]:
     flows = view.background_flow_snapshots()
     if not flows:
         return {}
-    bytes_dir, first_fail_t = _sim_bg_bytes_dir(flows, view, horizon_slots, dt_s)
+    bounds = _slot_bounds(view.now, slot_dts)
+    bytes_dir, first_fail_t = _sim_bg_bytes_dir(flows, view, bounds)
     if first_fail_t:
-        _add_joint_retry_bg_bytes(flows, first_fail_t, bytes_dir, view, horizon_slots, dt_s)
-    return {k: v * 8.0 / dt_s for k, v in bytes_dir.items()}
+        _add_joint_retry_bg_bytes(flows, first_fail_t, bytes_dir, view, bounds)
+    return {k: v * 8.0 / slot_dts[k[2]] for k, v in bytes_dir.items()}
 
 
 class ProblemBuilder:
     """Maps a ForecastView snapshot and PhysicsParams into a pure-data R3Problem."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         horizon_slots: int = 6,
         dt_s: float | None = None,
+        tail_enabled: bool = True,
+        tail_slots: int = 4,
+        tail_dt_s: float = 30.0,
         cvar_alpha: float = 0.95,
         cvar_weight: float = 1e-3,
         stage2_eps: float = 1e-5,
@@ -261,8 +269,15 @@ class ProblemBuilder:
             raise ValueError("horizon_slots must be positive")
         if dt_s is not None and (not math.isfinite(dt_s) or dt_s <= 0.0):
             raise ValueError("dt_s must be positive")
+        if tail_slots < 0:
+            raise ValueError("tail_slots must be non-negative")
+        if not math.isfinite(tail_dt_s) or tail_dt_s <= 0.0:
+            raise ValueError("tail_dt_s must be positive")
         self.horizon_slots = horizon_slots
         self.dt_s = dt_s
+        self.tail_enabled = tail_enabled
+        self.tail_slots = tail_slots
+        self.tail_dt_s = tail_dt_s
         self.cvar_alpha = cvar_alpha
         self.cvar_weight = cvar_weight
         self.stage2_eps = stage2_eps
@@ -279,17 +294,24 @@ class ProblemBuilder:
             # R3RuntimePlanner.plan() unconditionally enforces _validate_planning_dt at the runtime boundary.
             dt_s = float(invariants.interval_s)
         rem_horizon = max(dt_s, view.horizon_s - view.now)
-        horizon_slots = max(1, min(self.horizon_slots, int(math.ceil(rem_horizon / dt_s))))
+        near_slots = max(1, min(self.horizon_slots, int(math.ceil(rem_horizon / dt_s))))
+        near_end = near_slots * dt_s
+        if self.tail_enabled and self.tail_slots > 0 and rem_horizon > near_end + 1e-9:
+            n_tail = min(self.tail_slots, int(math.ceil((rem_horizon - near_end) / self.tail_dt_s)))
+            slot_dts: tuple[float, ...] = (dt_s,) * near_slots + (float(self.tail_dt_s),) * n_tail
+        else:
+            slot_dts = (dt_s,) * near_slots
+        total_slots = len(slot_dts)
         params = view.physics_params
 
         decode_reqs, decode_by_node = self._collect_decode_reqs(view)
-        window_s = horizon_slots * dt_s
+        window_s = sum(slot_dts)
         kv_ubs = {r.i: _req_kv_ub(params, r, window_s) for r in decode_reqs}
         nd_rep, ctx_rep = self._rep_batch(view, decode_reqs)
         tiers = _tier_specs(params, nd_rep, ctx_rep)
-        nodes = self._build_nodes(view, params, decode_reqs, decode_by_node, horizon_slots, dt_s, ctx_rep, kv_ubs)
-        edges, routes, dir_edge_idx = self._build_edges_and_routes(view, horizon_slots, dt_s)
-        requests = self._build_requests(view, decode_reqs, tiers, horizon_slots, dt_s, kv_ubs, dir_edge_idx)
+        nodes = self._build_nodes(view, params, decode_reqs, decode_by_node, slot_dts, ctx_rep, kv_ubs)
+        edges, routes, dir_edge_idx = self._build_edges_and_routes(view, slot_dts)
+        requests = self._build_requests(view, decode_reqs, tiers, dir_edge_idx, kv_ubs)
         kv_sorted = sorted(kv_ubs.values(), reverse=True)
         batch_tier_rates = (
             tuple(_node_tier_rates(params, k, sum(kv_sorted[:k])) for k in range(1, len(decode_reqs) + 1))
@@ -298,8 +320,10 @@ class ProblemBuilder:
         )
 
         return R3Problem(
-            horizon_slots=horizon_slots,
+            horizon_slots=total_slots,
             dt_s=dt_s,
+            slot_dts_s=slot_dts,
+            near_slots=near_slots,
             nodes=nodes,
             tiers=tiers,
             edges=edges,
@@ -345,11 +369,11 @@ class ProblemBuilder:
         view: ForecastView,
         params: PhysicsParams,
         node_id: int,
-        horizon_slots: int,
-        dt_s: float,
+        slot_dts: tuple[float, ...],
     ) -> tuple[tuple[bool, ...], tuple[float, ...], tuple[R3EclipseWindowSpec, ...], tuple[float, ...]]:
         t0 = view.now
-        t_end = t0 + horizon_slots * dt_s
+        bounds = _slot_bounds(t0, slot_dts)
+        t_end = bounds[-1][1]
         segs = view.power_segments(node_id, t0, t_end)
         merged_ecl: list[tuple[float, float]] = []
         for a, b, is_ecl in segs:
@@ -366,9 +390,8 @@ class ProblemBuilder:
         win_slots: list[list[tuple[int, float]]] = [[] for _ in merged_ecl]
         ctrl_dt = view.control_period_s
         ecl_active_after_entry = params.eclipse_dod_budget_j is None or params.eclipse_dod_budget_j > 1e-9
-        for t in range(horizon_slots):
-            sa = t0 + t * dt_s
-            sb = sa + dt_s
+        for t, (sa, sb) in enumerate(bounds):
+            dt_t = sb - sa
             sun_t = sum(
                 max(0.0, min(b, sb) - max(a, sa))
                 for a, b, is_ecl in segs
@@ -380,8 +403,8 @@ class ProblemBuilder:
                 if ov > 1e-12:
                     win_slots[w_idx].append((t, ov))
                     ecl_t += ov
-            if ctrl_dt < dt_s - 1e-9:
-                event_offsets.append(dt_s)
+            if ctrl_dt < dt_t - 1e-9:
+                event_offsets.append(dt_t)
             else:
                 ev_off = max(
                     (
@@ -414,8 +437,7 @@ class ProblemBuilder:
         params: PhysicsParams,
         decode_reqs: list[Request],
         decode_by_node: dict[int, list[Request]],
-        horizon_slots: int,
-        dt_s: float,
+        slot_dts: tuple[float, ...],
         ctx_rep: float,
         kv_ubs: dict[int, float],
     ) -> tuple[R3NodeSpec, ...]:
@@ -429,7 +451,7 @@ class ProblemBuilder:
             res_decode_bytes = sum(r.reserved_tokens * view.bpt for r in decode_by_node[j])
             kv_cap_bytes = view.kv_headroom(j) + res_decode_bytes + incoming_mig_bytes[j]
             is_eclipse, sunlit_s, ecl_windows, event_offsets = ProblemBuilder._build_node_power_windows(
-                view, params, j, horizon_slots, dt_s
+                view, params, j, slot_dts
             )
             dod_rem = None if params.eclipse_dod_budget_j is None else view.dod_remaining_j(j)
             active_j = [r for r in decode_by_node[j] if r.is_active_decode]
@@ -454,10 +476,12 @@ class ProblemBuilder:
 
     @staticmethod
     def _build_edges_and_routes(
-        view: ForecastView, horizon_slots: int, dt_s: float
+        view: ForecastView, slot_dts: tuple[float, ...]
     ) -> tuple[tuple[R3EdgeSpec, ...], dict[tuple[int, int, int], tuple[int, ...]], dict[tuple[int, int], int]]:
         compute_set = set(view.compute_nodes)
-        bg_dir_bps = _predict_bg_dir_bps(view, horizon_slots, dt_s)
+        bounds = _slot_bounds(view.now, slot_dts)
+        horizon_slots = len(slot_dts)
+        bg_dir_bps = _predict_bg_dir_bps(view, slot_dts)
         edges: list[R3EdgeSpec] = []
         dir_edge_idx: dict[tuple[int, int], int] = {}
         for e_idx, (u, v) in enumerate(view.edges):
@@ -467,11 +491,11 @@ class ProblemBuilder:
             tot_bps = tuple(
                 cap_bps
                 if (
-                    view.edge_up_at(e_idx, view.now + t * dt_s)
-                    and view.edge_up_until(e_idx, view.now + t * dt_s) >= view.now + (t + 1) * dt_s - 1e-9
+                    view.edge_up_at(e_idx, sa)
+                    and view.edge_up_until(e_idx, sa) >= sb - 1e-9
                 )
                 else 0.0
-                for t in range(horizon_slots)
+                for sa, sb in bounds
             )
             bg_uv = tuple(min(tot_bps[t], bg_dir_bps.get((u, v, t), 0.0)) for t in range(horizon_slots))
             bg_vu = tuple(min(tot_bps[t], bg_dir_bps.get((v, u, t), 0.0)) for t in range(horizon_slots))
@@ -481,8 +505,7 @@ class ProblemBuilder:
             edges.append(R3EdgeSpec(src=v, dst=u, tot_bps=tot_bps, bg_bps=bg_vu))
 
         routes: dict[tuple[int, int, int], tuple[int, ...]] = {}
-        for t in range(horizon_slots):
-            t_query = view.now + t * dt_s
+        for t, (t_query, _sb) in enumerate(bounds):
             for s in view.compute_nodes:
                 for d in view.compute_nodes:
                     if s == d:
@@ -498,28 +521,17 @@ class ProblemBuilder:
         return tuple(edges), routes, dir_edge_idx
 
     @staticmethod
-    def _build_requests(  # noqa: PLR0913
+    def _build_requests(
         view: ForecastView,
         decode_reqs: list[Request],
-        tiers: tuple[R3TierSpec, ...],
-        horizon_slots: int,
-        dt_s: float,
-        kv_ubs: dict[int, float],
+        _tiers: tuple[R3TierSpec, ...],
         dir_edge_idx: dict[tuple[int, int], int],
+        kv_ubs: dict[int, float],
     ) -> tuple[R3RequestSpec, ...]:
-        max_rate = max((t.rate_tok_s for t in tiers), default=0.0)
-        horizon_cap_tok = max(1.0, 0.8 * max_rate * horizon_slots * dt_s)
         req_specs: list[R3RequestSpec] = []
         for r in decode_reqs:
             rem_tok = float(r.remaining)
             raw_dl = max(0.0, r.deadline - view.now)
-            if rem_tok > horizon_cap_tok:
-                scale = horizon_cap_tok / rem_tok
-                eff_tok = horizon_cap_tok
-                eff_dl = max(dt_s, raw_dl * scale)
-            else:
-                eff_tok = rem_tok
-                eff_dl = raw_dl
             snap = view.migration_snapshot(r.i)
             kv_bytes = max(snap.target_bytes, 1.0) if snap is not None else max(kv_ubs[r.i] * view.bpt, 1.0)
             solver_edges: tuple[int, ...] = ()
@@ -534,8 +546,8 @@ class ProblemBuilder:
                     req_id=r.i,
                     init_node=r.node,
                     kv_bytes=kv_bytes,
-                    remaining_tokens=eff_tok,
-                    deadline_s=eff_dl,
+                    remaining_tokens=rem_tok,
+                    deadline_s=raw_dl,
                     weight=1.0,
                     elapsed_s=max(0.0, view.now - r.t),
                     reserved_kv_bytes=float(r.reserved_tokens * view.bpt),
