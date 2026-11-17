@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import pytest
 import simpy
+from factories import _base_cfg
 from satplan.demand_forecast import CausalDemandForecaster, DemandForecastConfig, PublishedDemandPlan
 from satplan.planners import CompositePolicy, RebalanceInvariants, get_planner
 from satplan.r3_planner import ProblemBuilder, R3RuntimePlanner, _slot_bounds
 from satplan.runner import run_simulation
 from satplan.trace import SCHEMA, Trace
 from satplan.world import CoWorld, Request
-from test_p0_p2_consistency import _base_cfg
 
 
 def test_p4_causal_non_anticipativity_hidden_future_invariance() -> None:
