@@ -1,0 +1,7 @@
+{
+  "git_sha": "04bfed1f675fcb899dad352bdba7b47c79383e7d",
+  "spec_sha256": "292d929520de8ec1bcd8e276e8bc8cacb6b547ad45963bbce5af2dabfa553d3a",
+  "base_cfg_sha256": "ed3ecc7f1d867574492078404f25ea9c2ca6f9d6a6d2e24d88dbcfa1369e34d2",
+  "trace_sha256": "6571b7a00295661ceb621f02f4f6e571c54a1e18def71b4479d7f7672f31e092",
+  "rerun_cmd": "uv run --frozen python experiments/lab2046_w53_validation/run.py"
+}

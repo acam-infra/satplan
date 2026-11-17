@@ -1,0 +1,73 @@
+name: lab2046_minimal_mechanism
+title: "LAB-2046 Minimal 3-Node Mechanism: B (Static) vs C (Attribution) vs O (Zero-Cost Ideal Schedule)"
+provenance:
+  model_and_gpu: "satplan/configs/w53_baseline.yaml (32L, 8 KV heads, 128 dim, fp16; kv_gib=24.0)"
+  thermal_and_tiers: "T_amb=20.0C, T0=25.0C, T_max=85.0C, R_th=0.25 K/W, C_th=150.0 J/K; P_low=20W (T_eq=25.0<=T0), P_high=300W (T_eq=95.0>85.0)"
+  eclipse_dod: "CS=1 enters eclipse [90s, 210s] with eclipse_dod_budget_j=1500.0 J; CS=2 sunlit [0s, 360s]"
+  exploration_criterion:
+    primary_metric: "long_slo_frac"
+    secondary_metric: "goodput_tok_s"
+    note: "Verify (1) B suffers avoidable loss caused by thermal/eclipse constraints (proven by C) and (2) O rescues >0 requests and >= +25% Goodput under identical physics & deadlines."
+
+horizon_s: 360.0
+control_period_s: 2.0
+frame_s: 10.0
+delivery: final
+rs_downlink: false
+
+rebalance_invariants:
+  interval_s: 5.0
+  max_inflight: 24
+  max_mig_per_req: 4
+
+model:
+  layers: 32
+  kv_heads: 8
+  head_dim: 128
+  bytes_per_elem: 2
+
+gpu:
+  kv_gib: 24.0
+  t_fixed_s: 0.003
+  t_weights_s: 0.01
+  t_kv_tok_s: 1.0e-7
+  t_seq_s: 5.0e-5
+  mem_freq_exp: 0.6
+
+power:
+  P_idle: 60
+  P_max: 300
+  gamma: 2.4
+  f_min: 0.35
+  P_dark: 80
+  eclipse_dod_budget_j: 1500.0
+  tiers:
+    - {name: idle_0w, power_w: 0.0, clock_f: 0.0}
+    - {name: low_20w, power_w: 20.0, clock_f: 0.35}
+    - {name: high_300w, power_w: 300.0, clock_f: 1.0}
+
+thermal:
+  T0_C: 25.0
+  T_amb_C: 20.0
+  T_max_C: 85.0
+  R_th: 0.25
+  C_th: 150.0
+
+net:
+  link_gbps:
+    intra: 10.0
+    inter: 1.5
+    rs: 5.0
+  hop_latency_s: 0.005
+
+slo:
+  max_stall_frac: 0.1
+
+workload:
+  arrival_window_s: 30.0
+
+requests:
+  - {i: 0, origin: 0, t: 0.0,  long: true, pin: 500, pout: 10000, upload_MB: 50.0, deadline: 185.0}
+  - {i: 1, origin: 0, t: 5.0,  long: true, pin: 500, pout: 10000, upload_MB: 50.0, deadline: 190.0}
+  - {i: 2, origin: 0, t: 10.0, long: true, pin: 500, pout: 10000, upload_MB: 50.0, deadline: 195.0}
+  - {i: 3, origin: 0, t: 15.0, long: true, pin: 500, pout: 10000, upload_MB: 50.0, deadline: 200.0}

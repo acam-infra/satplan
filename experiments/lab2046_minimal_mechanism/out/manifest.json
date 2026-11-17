@@ -1,0 +1,12 @@
+{
+  "git_sha": "04bfed1f675fcb899dad352bdba7b47c79383e7d",
+  "spec_sha256": "5a8a74d7b0f3b6cbf82675f4a06b23c954d977124cd4745b9d75773f45f48e61",
+  "requests_sha256": "08a5eab2c3aa12523525314bac556106e0bfd16ac1845bc404b0be4926b0d969",
+  "best_o_mig_map": {
+    "0": 2,
+    "1": 2,
+    "2": 2,
+    "3": 2
+  },
+  "rerun_cmd": "uv run --frozen python experiments/lab2046_minimal_mechanism/run.py"
+}
