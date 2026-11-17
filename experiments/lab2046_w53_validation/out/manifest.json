@@ -1,8 +1,7 @@
 {
   "base_main_sha": "04bfed1f675fcb899dad352bdba7b47c79383e7d",
-  "git_head_sha": "2d1c626a5fc2efd07fa9cc0f71ac285c929fba11",
-  "runner_sha256": "fd1d7443c86e5a6ab2a20b6e552d95d50b55b6dd9e76fc883ec57100b247398e",
-  "common_sha256": "04e8ecfe9f825342b871d27d80ca7f57624b3b93698675fff9a67949e294b6df",
+  "runner_sha256": "278d13cdb06421ccdf46dcd96c80c3de74764ebbdd7ea5be7ad41c5f9a393940",
+  "common_sha256": "7879b2883119d7e529b293035e34b00774bf64d546c47999327d25492d24b12a",
   "spec_sha256": "b24af66753c8dcbe105adf86b413d2627ad485347c899461ee5f6edc3e366a3c",
   "base_cfg_sha256": "ed3ecc7f1d867574492078404f25ea9c2ca6f9d6a6d2e24d88dbcfa1369e34d2",
   "trace_sha256": "6571b7a00295661ceb621f02f4f6e571c54a1e18def71b4479d7f7672f31e092",
@@ -346,5 +345,8 @@
       "final_resident_sum": 0.0
     }
   },
-  "rerun_cmd": "PYTHONPATH=. uv run --frozen python experiments/lab2046_w53_validation/run.py"
+  "rerun_cmd": "PYTHONPATH=. uv run --frozen python experiments/lab2046_w53_validation/run.py",
+  "pre_run_head_sha": "2d1c626a5fc2efd07fa9cc0f71ac285c929fba11",
+  "replay_append_head_sha": "530bd1112785acace642ad6608256f6496118679",
+  "kv_conservation_note": "end_max_kv_used_bytes is an end-of-horizon snapshot, not a runtime peak."
 }

@@ -184,6 +184,26 @@ def _build_arm_specs(  # noqa: PLR0913
     cfg_cdod = _deep_merge(sc_cfg, {"power": {"eclipse_dod_budget_j": None}})
     cfg_cboth = _deep_merge(cfg_ct, {"power": {"eclipse_dod_budget_j": None}})
     return [
+        (
+            "B_nearest_replay",
+            sc_cfg,
+            trace,
+            ReplayPlacer(b_near_targets),
+            get_planner("none", sc_cfg),
+            CoWorld,
+            inv_quota,
+            b_near_targets,
+        ),
+        (
+            "B_least_replay",
+            sc_cfg,
+            trace,
+            ReplayPlacer(b_least_targets),
+            get_planner("none", sc_cfg),
+            CoWorld,
+            inv_quota,
+            b_least_targets,
+        ),
         ("C_thermal", cfg_ct, trace, get_placer("nearest"), get_planner("none", cfg_ct), CoWorld, inv_quota, None),
         ("C_dod_only", cfg_cdod, trace, get_placer("nearest"), get_planner("none", cfg_cdod), CoWorld, inv_quota, None),
         (
@@ -392,7 +412,7 @@ def main() -> None:  # noqa: PLR0915
     repo_dir = here.parent.parent
     manifest = {
         "base_main_sha": "04bfed1f675fcb899dad352bdba7b47c79383e7d",
-        "git_head_sha": git_head_sha(repo_dir),
+        "pre_run_head_sha": git_head_sha(repo_dir),
         "runner_sha256": sha256_file(Path(__file__)),
         "common_sha256": sha256_file(here.parent / "lab2046_common.py"),
         "spec_sha256": sha256_bytes(spec_raw),
@@ -406,7 +426,9 @@ def main() -> None:  # noqa: PLR0915
 
     arm_order = [
         "B_nearest",
+        "B_nearest_replay",
         "B_least",
+        "B_least_replay",
         "C_thermal",
         "C_dod_only",
         "C_eclipse_all",
@@ -442,5 +464,108 @@ def main() -> None:  # noqa: PLR0915
             )
 
 
+def run_replay_only() -> None:  # noqa: PLR0915
+    """Run only the 6 B_replay controls on w53_constrained and append to existing runs.csv."""
+    here = Path(__file__).resolve().parent
+    out_dir = here / "out"
+    raw_dir = out_dir / "raw"
+    spec_raw = (here / "spec.yaml").read_bytes()
+    spec = yaml.safe_load(spec_raw)
+    base_cfg_path = (here / spec["base_config"]).resolve()
+    base_cfg = load_config(base_cfg_path)
+    base_cfg["workload"]["arrival_window_s"] = float(spec["arrival_window_s"])
+    base_cfg["rebalance_invariants"] = copy.deepcopy(spec["rebalance_invariants"])
+    trace_path = (Path(base_cfg["_dir"]) / base_cfg["trace"]).resolve()
+    trace_raw = json.loads(trace_path.read_text(encoding="utf-8"))
+    trace_raw["horizon_s"] = float(spec["horizon_s"])
+    trace = Trace(trace_raw)
+    inv_quota = RebalanceInvariants.from_cfg(spec)
+
+    sc_name = "w53_constrained"
+    sc_cfg = _deep_merge(base_cfg, spec["scenarios"][sc_name].get("overrides", {}))
+    existing = [
+        r
+        for r in csv.DictReader((out_dir / "runs.csv").open(encoding="utf-8"))
+        if not (r["scenario"] == sc_name and r["arm"] in ("B_nearest_replay", "B_least_replay"))
+    ]
+    new_rows: list[dict[str, Any]] = []
+    for seed in spec["seeds"]:
+        frozen_reqs = make_requests(sc_cfg, trace, int(seed))
+        max_dl = max(r.deadline for r in frozen_reqs)
+        for base_arm, replay_arm in [("B_nearest", "B_nearest_replay"), ("B_least", "B_least_replay")]:
+            b_raw = json.loads((raw_dir / f"{sc_name}__s{seed}__{base_arm}.json").read_text(encoding="utf-8"))
+            targets = {int(row[0]): int(row[8][0]) for row in b_raw["requests"] if row[8]}
+            res = run_arm(
+                sc_cfg,
+                trace,
+                frozen_reqs,
+                placer_obj=ReplayPlacer(targets),
+                planner_obj=get_planner("none", sc_cfg),
+                world_cls=CoWorld,
+                invariants=inv_quota,
+                seed=int(seed),
+                expected_targets=targets,
+            )
+            m = res["metrics"]
+            (raw_dir / f"{sc_name}__s{seed}__{replay_arm}.json").write_text(
+                json.dumps(
+                    {
+                        "scenario": sc_name,
+                        "seed": int(seed),
+                        "arm": replay_arm,
+                        "metrics": m,
+                        "kv_conservation": None,
+                        "mig_events": res["mig_events"],
+                        "requests": res["requests"],
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            new_rows.append(
+                {
+                    "scenario": sc_name,
+                    "arm": replay_arm,
+                    "seed": int(seed),
+                    "n_req": m["n_req"],
+                    "max_deadline_s": round(max_dl, 2),
+                    "goodput_tok_s": m["goodput_tok_s"],
+                    "long_slo_pct": m["good_long_frac"] * 100.0,
+                    "badput_tok_s": m["badput_tok_s"],
+                    "undelivered_pct": m["undelivered_frac"] * 100.0,
+                    "e2e_p95_all_s": m["e2e_p95_all_s"],
+                    "long_p95_all_s": m["long_p95_all_s"],
+                    "peak_temp_C": m["peak_temp_C"],
+                    "dod_exhausted_s": m["dod_exhausted_s"],
+                    "censored_dl_gt_h": m["censored_dl_gt_h"],
+                    "censored_completion_count": m["censored_completion_count"],
+                }
+            )
+            print(
+                f"  {replay_arm:18s} s{seed}: Good={m['goodput_tok_s']:.1f}, "
+                f"LongSLO={m['good_long_frac']*100:.2f}%, P95={m['e2e_p95_all_s']:.1f}s"
+            )
+
+    all_rows = existing + new_rows
+    with (out_dir / "runs.csv").open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(all_rows[0].keys()))
+        w.writeheader()
+        w.writerows(all_rows)
+
+    mf = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+    mf["pre_run_head_sha"] = mf.pop("git_head_sha", git_head_sha(here.parent.parent))
+    mf["replay_append_head_sha"] = git_head_sha(here.parent.parent)
+    mf["runner_sha256"] = sha256_file(Path(__file__))
+    mf["common_sha256"] = sha256_file(here.parent / "lab2046_common.py")
+    mf["spec_sha256"] = sha256_bytes(spec_raw)
+    mf["kv_conservation_note"] = "end_max_kv_used_bytes is an end-of-horizon snapshot, not a runtime peak."
+    (out_dir / "manifest.json").write_text(json.dumps(mf, indent=2), encoding="utf-8")
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+
+    if "--append-replay-only" in sys.argv:
+        run_replay_only()
+    else:
+        main()

@@ -73,7 +73,7 @@ class ZeroCostAtomicWorld(CoWorld):
                     assert abs(self.reserved[j]) < 1e-6, f"node {j} leftover reserved={self.reserved[j]}"
                     assert self._node_reserved_tokens[j] == 0, f"node {j} leftover resident tokens"
         return {
-            "max_kv_used_bytes": max_kv_used,
+            "end_max_kv_used_bytes": max_kv_used,
             "final_reserved_sum": float(sum(self.reserved.values())),
             "final_resident_sum": float(sum(self._node_reserved_tokens.values()) * self.bpt),
         }
