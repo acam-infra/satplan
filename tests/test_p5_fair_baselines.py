@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import simpy
+from factories import _base_cfg
 from satplan.demand_forecast import PublishedDemandPlan
 from satplan.placers import get_placer
 from satplan.planners import CompositePolicy, ForecastAwarePlanner, RebalanceInvariants, get_planner
@@ -9,7 +10,6 @@ from satplan.runner import run_simulation
 from satplan.suite import run_suite
 from satplan.trace import SCHEMA, Trace
 from satplan.world import CoWorld, Request, make_requests
-from test_p0_p2_consistency import _base_cfg
 
 
 def test_p5_forecast_aware_planner_same_info_and_non_anticipativity() -> None:
