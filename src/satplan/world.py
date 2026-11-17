@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 import simpy
 
 from satplan.actions import BackgroundFlowSnapshot, MigrationOrder, MigrationSessionSnapshot, PlanAction
+from satplan.demand_forecast import ObservedArrivalRecord, PublishedDemandPlan
 from satplan.net import FluidNet
 from satplan.power_thermal import PowerThermalModel
 from satplan.timing import iter_time, kv_bytes_per_tok
@@ -85,6 +86,7 @@ class CoWorld:
         planner: RuntimePlanner | None = None,
         recorder: Recorder | None = None,
         seed: int = 0,
+        published_plans: tuple[PublishedDemandPlan, ...] | list[PublishedDemandPlan] | None = None,
     ):
         self.env = env
         self.trace = trace
@@ -122,6 +124,13 @@ class CoWorld:
         self._inflight_mig = 0
         self._mig_flows: dict[int, Any] = {}
         self.acc = {"upload_fail": 0}
+        self._observed_arrivals: list[ObservedArrivalRecord] = []
+        raw_plans = (cfg.get("demand_forecast") or {}).get("published_plans", [])
+        cfg_plans = tuple(
+            p if isinstance(p, PublishedDemandPlan) else PublishedDemandPlan.from_dict(p) for p in raw_plans
+        )
+        extra_plans = tuple(published_plans) if published_plans is not None else ()
+        self._published_plans: tuple[PublishedDemandPlan, ...] = cfg_plans + extra_plans
         self.local_view = LocalStateView(self)
         self.forecast_view = ForecastView(self)
 
@@ -133,6 +142,18 @@ class CoWorld:
     @property
     def peak_temp_C(self) -> float:
         return self.pt.peak_temp_C
+
+    def observed_arrivals(self, now: float | None = None) -> tuple[ObservedArrivalRecord, ...]:
+        t_cur = self.env.now if now is None else now
+        return tuple(a for a in self._observed_arrivals if a.arrival_time_s <= t_cur + 1e-12)
+
+    def published_plans(self, now: float | None = None) -> tuple[PublishedDemandPlan, ...]:
+        t_cur = self.env.now if now is None else now
+        return tuple(
+            p
+            for p in self._published_plans
+            if p.publish_time_s <= t_cur + 1e-12 and p.arrival_time_s > t_cur + 1e-12
+        )
 
     def node_load(self, j: int) -> int:
         return len(self.nodes[j])
@@ -421,6 +442,16 @@ class CoWorld:
     def _life(self, r: Request):
         if r.t > self.env.now:
             yield self.env.timeout(r.t - self.env.now)
+        self._observed_arrivals.append(
+            ObservedArrivalRecord(
+                arrival_time_s=float(r.t),
+                origin=int(r.origin),
+                tokens=float(r.pout),
+                kv_bytes=float(r.reserved_tokens * self.bpt),
+                deadline_s=max(0.0, float(r.deadline - r.t)),
+                demand_class="long" if r.long else "short",
+            )
+        )
         self.log("arrive", req=r.i, o=r.origin, long=r.long)
         j = yield from self._admit_and_upload(r)
         r.node = j

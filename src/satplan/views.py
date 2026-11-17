@@ -7,6 +7,7 @@ from satplan.trace import INF
 
 if TYPE_CHECKING:
     from satplan.actions import BackgroundFlowSnapshot, MigrationSessionSnapshot
+    from satplan.demand_forecast import ObservedArrivalRecord, PublishedDemandPlan
     from satplan.power_thermal import PhysicsParams
     from satplan.world import CoWorld, Request
 
@@ -171,6 +172,16 @@ class ForecastView(LocalStateView):
     @property
     def edges(self) -> tuple[tuple[int, int], ...]:
         return tuple(self._w.trace.edges)
+
+    @property
+    def rs_nodes(self) -> tuple[int, ...]:
+        return tuple(self._w.trace.rs)
+
+    def observed_arrivals(self, now: float | None = None) -> tuple[ObservedArrivalRecord, ...]:
+        return self._w.observed_arrivals(now)
+
+    def published_plans(self, now: float | None = None) -> tuple[PublishedDemandPlan, ...]:
+        return self._w.published_plans(now)
 
     def f_of(self, j: int, t: float | None = None) -> float:
         return self._w.f_of(j, t)

@@ -58,7 +58,7 @@ def run_simulation(
     env = simpy.Environment()
     frame_s = float(cfg.get("frame_s", 10.0))
     rec = Recorder(frame_s) if record else None
-    policy = CompositePolicy(get_placer(placer), get_planner(planner), RebalanceInvariants.from_cfg(cfg))
+    policy = CompositePolicy(get_placer(placer), get_planner(planner, cfg), RebalanceInvariants.from_cfg(cfg))
     w = CoWorld(
         env,
         trace,

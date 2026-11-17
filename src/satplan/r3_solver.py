@@ -67,6 +67,20 @@ class R3RequestSpec:
 
 
 @dataclass(frozen=True)
+class R3PredictedDemandSpec:
+    demand_id: int
+    origin: int
+    candidate_nodes: tuple[int, ...]
+    arrival_slot: int
+    expected_requests: float
+    tokens_per_req: float
+    kv_bytes_per_req: float
+    deadline_s: float
+    weight: float = 1.0
+    arrival_offset_s: float | None = None
+
+
+@dataclass(frozen=True)
 class R3Problem:
     horizon_slots: int
     dt_s: float
@@ -91,6 +105,7 @@ class R3Problem:
     time_limit_s: float = 5.0
     slot_dts_s: tuple[float, ...] | None = None
     near_slots: int | None = None
+    predicted_demands: tuple[R3PredictedDemandSpec, ...] = ()
 
     def slot_dt(self, t: int) -> float:
         return self.dt_s if self.slot_dts_s is None else self.slot_dts_s[t]
@@ -227,7 +242,35 @@ class _VarLayout:
                         self._a_ecl_map[key] = off
                         self._a_ecl_by_slot.setdefault((j, t, l_i), []).append((off, dur))
                         off += 1
+        self.D = len(problem.predicted_demands)
+        self._p_place: dict[tuple[int, int], int] = {}
+        self._p_active: dict[tuple[int, int, int], int] = {}
+        self._p_g: dict[tuple[int, int, int], int] = {}
+        self._p_comp: dict[tuple[int, int], int] = {}
+        self._p_y: dict[int, int] = {}
+        off = self._init_pred_vars(problem, off)
         self.total = off
+
+    def _init_pred_vars(self, problem: R3Problem, off: int) -> int:
+        node_pos = {n.node_id: j for j, n in enumerate(problem.nodes)}
+        for d_i, dem in enumerate(problem.predicted_demands):
+            self._p_y[d_i] = off
+            off += 1
+            for t in range(max(1, dem.arrival_slot), self.H):
+                self._p_comp[(d_i, t)] = off
+                off += 1
+            for nid in dem.candidate_nodes:
+                j = node_pos.get(nid)
+                if j is None:
+                    continue
+                self._p_place[(d_i, j)] = off
+                off += 1
+                for t in range(max(1, dem.arrival_slot), self.H):
+                    self._p_active[(d_i, j, t)] = off
+                    off += 1
+                    self._p_g[(d_i, j, t)] = off
+                    off += 1
+        return off
 
     @staticmethod
     def _compute_batch_breakpoints(problem: R3Problem) -> tuple[int, ...]:
@@ -510,7 +553,7 @@ class R3Solver:
         except ValueError as exc:
             return self._failure_result(problem, "error", f"invalid_problem: {exc}", time.perf_counter() - t_start)
 
-        if not problem.requests:
+        if not problem.requests and not problem.predicted_demands:
             idle_idx = min(problem.tiers, key=lambda t: t.power_w).index
             wall = time.perf_counter() - t_start
             return R3Result(
@@ -538,6 +581,7 @@ class R3Solver:
 
         self._add_power_thermal_constraints(problem, idx, cb)
         self._add_request_compute_constraints(problem, idx, cb)
+        self._add_predicted_demand_constraints(problem, idx, cb)
         self._add_migration_state_constraints(problem, idx, node_pos, routes, cb)
         self._add_network_constraints(problem, idx, routes, cb)
         self._add_cvar_constraints(problem, idx, cb)
@@ -700,6 +744,11 @@ class R3Solver:
 
         for var_id in idx._a_ecl_map.values():
             integrality[var_id] = 1
+            ub[var_id] = 1.0
+        for var_id in (*idx._p_place.values(), *idx._p_comp.values(), *idx._p_y.values()):
+            integrality[var_id] = 1
+            ub[var_id] = 1.0
+        for var_id in idx._p_active.values():
             ub[var_id] = 1.0
         for (j, w_idx, k), var_id in idx._dod_start_map.items():
             budget = idx.ecl_windows[j][w_idx].budget_j
@@ -882,16 +931,25 @@ class R3Solver:
                     for r in range(idx.R):
                         cb.add([(idx.x(r, j, t), 1.0), (idx.z(j, z0, t), 1.0)], -math.inf, 1.0)
 
-                if zero_tiers and idx.R > 0:
-                    for l_i, tier in enumerate(problem.tiers):
-                        if tier.power_w > 0.0:
-                            cb.add(
-                                [(idx.z(j, l_i, t), 1.0)] + [(idx.x(r, j, t), -1.0) for r in range(idx.R)],
-                                -math.inf,
-                                0.0,
-                            )
+                if zero_tiers and (idx.R > 0 or idx.D > 0):
+                    self._add_non_idle_active_gate(problem, idx, cb, j, t)
 
             self._add_eclipse_dod_constraints(problem, idx, j, cb)
+
+    @staticmethod
+    def _add_non_idle_active_gate(
+        problem: R3Problem, idx: _VarLayout, cb: _ConstraintBuilder, j: int, t: int
+    ) -> None:
+        active_terms = [(idx.x(r, j, t), -1.0) for r in range(idx.R)]
+        for d_i in range(idx.D):
+            pa = idx._p_active.get((d_i, j, t))
+            if pa is not None:
+                active_terms.append((pa, -1.0))
+        if not active_terms:
+            return
+        for l_i, tier in enumerate(problem.tiers):
+            if tier.power_w > 0.0:
+                cb.add([(idx.z(j, l_i, t), 1.0), *active_terms], -math.inf, 0.0)
 
     @staticmethod
     def _add_slot_rate_cap(  # noqa: PLR0913
@@ -938,6 +996,10 @@ class R3Solver:
                     res_bytes = req.kv_bytes if req.reserved_kv_bytes is None else req.reserved_kv_bytes
                     kv_terms.append((idx.u(r, j, t), res_bytes))
                     kv_terms.append((idx.m(r, j, t), res_bytes))
+                for d_i, dem in enumerate(problem.predicted_demands):
+                    pa = idx._p_active.get((d_i, j, t))
+                    if pa is not None:
+                        kv_terms.append((pa, dem.expected_requests * dem.kv_bytes_per_req))
                 cb.add(kv_terms, -math.inf, problem.nodes[j].kv_cap_bytes)
 
                 for r, req in enumerate(problem.requests):
@@ -975,6 +1037,92 @@ class R3Solver:
                 tok_terms = [(idx.comp(r, tau), req.remaining_tokens) for tau in range(t + 1)]
                 tok_terms.extend((idx.g(r, j, tau), -1.0) for tau in range(t + 1) for j in range(idx.J))
                 cb.add(tok_terms, -math.inf, 0.0)
+
+    def _add_predicted_demand_constraints(
+        self, problem: R3Problem, idx: _VarLayout, cb: _ConstraintBuilder
+    ) -> None:
+        if idx.D == 0:
+            return
+        self._add_predicted_node_sharing(problem, idx, cb)
+        for d_i, dem in enumerate(problem.predicted_demands):
+            self._add_predicted_demand_lifecycle(idx, cb, d_i, dem)
+
+    @staticmethod
+    def _add_predicted_node_sharing(
+        problem: R3Problem, idx: _VarLayout, cb: _ConstraintBuilder
+    ) -> None:
+        node_rates = [
+            n.tier_rates_tok_s if n.tier_rates_tok_s is not None else tuple(t.rate_tok_s for t in problem.tiers)
+            for n in problem.nodes
+        ]
+        for j in range(idx.J):
+            rates_j = node_rates[j]
+            max_rate_j = max(rates_j, default=0.0)
+            for t in range(idx.H):
+                dt_t = idx.slot_dts[t]
+                p_terms: list[tuple[int, float]] = [(idx.g(r, j, t), 1.0) for r in range(idx.R)]
+                has_p = False
+                for d_i, dem in enumerate(problem.predicted_demands):
+                    pg = idx._p_g.get((d_i, j, t))
+                    pa = idx._p_active.get((d_i, j, t))
+                    if pg is not None and pa is not None:
+                        has_p = True
+                        p_terms.append((pg, dem.expected_requests))
+                        eff_dt_t = dt_t
+                        if dem.arrival_offset_s is not None:
+                            eff_dt_t = max(0.0, min(dt_t, idx.slot_ends[t] - dem.arrival_offset_s))
+                        cb.add([(pg, 1.0), (pa, -max_rate_j * eff_dt_t)], -math.inf, 0.0)
+                        if eff_dt_t < dt_t - 1e-9:
+                            tier_cap = [(pg, 1.0)]
+                            for l_i, rate in enumerate(rates_j):
+                                if rate > 0.0:
+                                    tier_cap.append((idx.z(j, l_i, t), -rate * eff_dt_t))
+                            cb.add(tier_cap, -math.inf, 0.0)
+                if not has_p:
+                    continue
+                for l_i in range(idx.L):
+                    rate = rates_j[l_i]
+                    if rate <= 0.0:
+                        continue
+                    p_terms.append((idx.z(j, l_i, t), -rate * idx.sunlit_s[j][t]))
+                    for a_var, dur in idx._a_ecl_by_slot.get((j, t, l_i), ()):
+                        p_terms.append((a_var, -rate * dur))
+                cb.add(p_terms, -math.inf, 0.0)
+
+    @staticmethod
+    def _add_predicted_demand_lifecycle(
+        idx: _VarLayout, cb: _ConstraintBuilder, d_i: int, dem: R3PredictedDemandSpec
+    ) -> None:
+        t0 = max(1, dem.arrival_slot)
+        place_vars = [idx._p_place[(d_i, j)] for j in range(idx.J) if (d_i, j) in idx._p_place]
+        if not place_vars or t0 >= idx.H:
+            cb.add([(idx._p_y[d_i], 1.0)], 0.0, 0.0)
+            return
+        cb.add([(v, 1.0) for v in place_vars], -math.inf, 1.0)
+        comp_vars = [idx._p_comp[(d_i, t)] for t in range(t0, idx.H)]
+        cb.add([(v, 1.0) for v in comp_vars] + [(pv, -1.0) for pv in place_vars], -math.inf, 0.0)
+        valid_comp = [idx._p_comp[(d_i, t)] for t in range(t0, idx.H) if idx.slot_ends[t] <= dem.deadline_s + 1e-9]
+        if valid_comp:
+            cb.add([(idx._p_y[d_i], 1.0)] + [(cv, -1.0) for cv in valid_comp], -math.inf, 0.0)
+        else:
+            cb.add([(idx._p_y[d_i], 1.0)], 0.0, 0.0)
+        for j in range(idx.J):
+            pv = idx._p_place.get((d_i, j))
+            if pv is None:
+                continue
+            for t in range(t0, idx.H):
+                pa = idx._p_active[(d_i, j, t)]
+                cb.add([(pa, 1.0), (pv, -1.0)], -math.inf, 0.0)
+                prev_comps = [(idx._p_comp[(d_i, tau)], 1.0) for tau in range(t0, t)]
+                cb.add([(pa, 1.0), (pv, -1.0), *prev_comps], 0.0, math.inf)
+        for t in range(t0, idx.H):
+            tok_terms = [(idx._p_comp[(d_i, tau)], dem.tokens_per_req) for tau in range(t0, t + 1)]
+            for tau in range(t0, t + 1):
+                for j in range(idx.J):
+                    pg = idx._p_g.get((d_i, j, tau))
+                    if pg is not None:
+                        tok_terms.append((pg, -1.0))
+            cb.add(tok_terms, -math.inf, 0.0)
 
     def _add_migration_state_constraints(
         self,
@@ -1344,8 +1492,10 @@ class R3Solver:
         c = np.zeros(idx.total, dtype=float)
         for r, req in enumerate(problem.requests):
             c[idx.y(r)] = -req.weight
+        for d_i, dem in enumerate(problem.predicted_demands):
+            c[idx._p_y[d_i]] = -dem.weight * dem.expected_requests
         if problem.cvar_weight > 0.0:
-            denom = max(1e-9, (1.0 - problem.cvar_alpha) * idx.R)
+            denom = max(1e-9, (1.0 - problem.cvar_alpha) * max(1, idx.R))
             c[idx.eta()] = problem.cvar_weight
             for r in range(idx.R):
                 c[idx.xi(r)] = problem.cvar_weight / denom
