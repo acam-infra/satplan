@@ -154,20 +154,36 @@ class CoWorld:
     def background_flow_snapshots(self) -> tuple[BackgroundFlowSnapshot, ...]:
         self.net.advance(self.env.now)
         snaps: list[BackgroundFlowSnapshot] = []
+        active_reqs: set[int] = set()
         for f in self.net.flows:
             if f.tag == "mig":
                 continue
             req_id = f.meta.get("req")
+            if req_id is not None:
+                active_reqs.add(req_id)
             req = self._req_by_id.get(req_id) if req_id is not None else None
             total = float(req.upload_bytes) if req is not None else float(f.sent + f.remaining)
+            origin = req.origin if req is not None else (f.hops[0][0] if f.hops else 0)
             snaps.append(
                 BackgroundFlowSnapshot(
                     req_id=req_id,
                     hops=tuple((int(a), int(b), int(e)) for a, b, e in f.hops),
                     remaining_bytes=max(0.0, float(f.remaining)),
                     total_bytes=max(0.0, total),
+                    origin=origin,
                 )
             )
+        for r in self.reqs:
+            if r.t <= self.env.now and r.state == "wait" and r.upload_bytes > 0.0 and r.i not in active_reqs:
+                snaps.append(
+                    BackgroundFlowSnapshot(
+                        req_id=r.i,
+                        hops=(),
+                        remaining_bytes=float(r.upload_bytes),
+                        total_bytes=float(r.upload_bytes),
+                        origin=r.origin,
+                    )
+                )
         return tuple(snaps)
 
     def migration_snapshot(self, req_id: int) -> MigrationSessionSnapshot | None:

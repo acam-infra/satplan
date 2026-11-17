@@ -30,6 +30,7 @@ class BackgroundFlowSnapshot:
     hops: tuple[tuple[int, int, int], ...]  # (from_node, to_node, edge_idx)
     remaining_bytes: float
     total_bytes: float
+    origin: int = 0
 
 
 @dataclass(frozen=True)

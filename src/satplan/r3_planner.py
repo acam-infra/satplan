@@ -87,6 +87,8 @@ def _refresh_bg_flow_states(  # noqa: PLR0913
     done: list[bool],
     failed: list[bool],
     rem: list[float],
+    first_fail_t: dict[int, float],
+    override: tuple[int, int, float] | None,
     view: ForecastView,
     tau: float,
     slot_end: float,
@@ -94,21 +96,34 @@ def _refresh_bg_flow_states(  # noqa: PLR0913
     active: list[int] = []
     next_topo = slot_end
     for i, f in enumerate(flows):
-        if done[i] or not cur_hops[i]:
+        if done[i]:
             continue
+        if not cur_hops[i]:
+            first_fail_t.setdefault(i, tau)
+            if override is not None and override[0] == i and tau >= override[2] - 1e-12:
+                new_p = view.path_at(f.origin, override[1], tau)
+                if new_p is not None and new_p[1]:
+                    cur_hops[i] = tuple((new_p[0][k], new_p[0][k + 1], new_p[1][k]) for k in range(len(new_p[1])))
+                    failed[i] = False
+                else:
+                    failed[i] = True
+                    next_topo = min(next_topo, view.next_conn(f.origin, override[1], tau))
+                    continue
+            else:
+                continue
         all_up = all(view.edge_up_at(e, tau) for _, _, e in cur_hops[i])
         if not all_up or failed[i]:
             if not all_up:
                 rem[i] = float(f.total_bytes)
-            origin = cur_hops[i][0][0]
-            dst = cur_hops[i][-1][1]
-            new_p = view.path_at(origin, dst, tau)
+                first_fail_t.setdefault(i, tau)
+            dst = override[1] if (override is not None and override[0] == i) else cur_hops[i][-1][1]
+            new_p = view.path_at(f.origin, dst, tau)
             if new_p is not None and new_p[1]:
                 cur_hops[i] = tuple((new_p[0][k], new_p[0][k + 1], new_p[1][k]) for k in range(len(new_p[1])))
                 failed[i] = False
             else:
                 failed[i] = True
-                next_topo = min(next_topo, view.next_conn(origin, dst, tau))
+                next_topo = min(next_topo, view.next_conn(f.origin, dst, tau))
         if not failed[i]:
             active.append(i)
             for _, _, e in cur_hops[i]:
@@ -116,25 +131,27 @@ def _refresh_bg_flow_states(  # noqa: PLR0913
     return active, next_topo
 
 
-def _predict_bg_dir_bps(
+def _sim_bg_bytes_dir(
+    flows: tuple[Any, ...],
     view: ForecastView,
     horizon_slots: int,
     dt_s: float,
-) -> dict[tuple[int, int, int], float]:
-    flows = view.background_flow_snapshots()
-    if not flows:
-        return {}
+    override: tuple[int, int, float] | None = None,
+) -> tuple[dict[tuple[int, int, int], float], dict[int, float]]:
     cur_hops = [f.hops for f in flows]
     rem = [float(f.remaining_bytes) for f in flows]
     done = [r <= 1.0 for r in rem]
     failed = [False] * len(flows)
+    first_fail_t: dict[int, float] = {}
     bytes_dir: dict[tuple[int, int, int], float] = {}
 
     for t in range(horizon_slots):
         tau = view.now + t * dt_s
         slot_end = view.now + (t + 1) * dt_s
         while tau < slot_end - 1e-12:
-            active, next_topo = _refresh_bg_flow_states(flows, cur_hops, done, failed, rem, view, tau, slot_end)
+            active, next_topo = _refresh_bg_flow_states(
+                flows, cur_hops, done, failed, rem, first_fail_t, override, view, tau, slot_end
+            )
             if not active:
                 tau = max(tau + 1e-12, next_topo)
                 continue
@@ -152,6 +169,24 @@ def _predict_bg_dir_bps(
                     bytes_dir[(a, b, t)] = bytes_dir.get((a, b, t), 0.0) + step
             tau = tau_next
 
+    return bytes_dir, first_fail_t
+
+
+def _predict_bg_dir_bps(
+    view: ForecastView,
+    horizon_slots: int,
+    dt_s: float,
+) -> dict[tuple[int, int, int], float]:
+    flows = view.background_flow_snapshots()
+    if not flows:
+        return {}
+    bytes_dir, first_fail_t = _sim_bg_bytes_dir(flows, view, horizon_slots, dt_s)
+    for i, t_fail in first_fail_t.items():
+        for dst in view.compute_nodes:
+            cand_bytes, _ = _sim_bg_bytes_dir(flows, view, horizon_slots, dt_s, override=(i, dst, t_fail))
+            for k, v in cand_bytes.items():
+                if v > bytes_dir.get(k, 0.0):
+                    bytes_dir[k] = v
     return {k: v * 8.0 / dt_s for k, v in bytes_dir.items()}
 
 
