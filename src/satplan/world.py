@@ -45,6 +45,7 @@ class Request:
     proc: object = None
     trail: list[int] = field(default_factory=list)
     output_budget: int | None = None
+    predicted_pout: int | None = None
     paused: bool = False
     decode_done: simpy.Event | None = None
     mig_dst: int | None = None
@@ -68,6 +69,11 @@ class Request:
     @property
     def remaining(self) -> float:
         return max(0.0, self.pout - self.gen)
+
+    @property
+    def predicted_remaining(self) -> float:
+        pred = self.pout if self.predicted_pout is None else self.predicted_pout
+        return max(0.0, pred - self.gen)
 
     @property
     def is_active_decode(self) -> bool:
@@ -446,7 +452,7 @@ class CoWorld:
             ObservedArrivalRecord(
                 arrival_time_s=float(r.t),
                 origin=int(r.origin),
-                tokens=float(r.pout),
+                tokens=float(r.pout if r.predicted_pout is None else r.predicted_pout),
                 kv_bytes=float(r.reserved_tokens * self.bpt),
                 deadline_s=max(0.0, float(r.deadline - r.t)),
                 demand_class="long" if r.long else "short",

@@ -1,0 +1,41 @@
+{
+  "issue": "LAB-2082",
+  "base_commit": "bb0ff76003eb53f31d1d6654c26147208426dc46",
+  "rebalance": {
+    "interval_s": 5.0,
+    "max_inflight": 24,
+    "max_mig_per_req": 4,
+    "max_orders_per_round": 4
+  },
+  "horizon_s": 320.0,
+  "goodput_window_s": 25.0,
+  "dev_seeds": [101, 102, 103],
+  "val_seeds": [142, 143, 144, 145, 146],
+  "l1_k1k2": {
+    "nodes": 6,
+    "n_short": 24,
+    "n_long": 24,
+    "length_ratios": [1.0, 2.0, 4.0],
+    "spare_targets": ["available", "unavailable"],
+    "post_start_arrivals_at_1x": [0, 2, 4],
+    "arms": ["Static", "Queue-Reroute", "Dyn-Zero", "Dyn-CF", "Dyn-Sh-Naive"]
+  },
+  "l1_k3": {
+    "bg_load_fractions": [0.0, 0.3, 0.6, 0.9],
+    "bg_patterns": ["concentrated", "dispersed"],
+    "kv_scales": [0.5, 1.0, 2.0],
+    "mig_concurrencies": [1, 2, 4],
+    "arms": ["Dyn-CF", "Dyn-Sh-Naive", "Dyn-Sh-Aware"]
+  },
+  "l2_24sat": {
+    "nodes": 24,
+    "n_short": 96,
+    "n_long": 96,
+    "arms": ["Static", "Queue-Reroute", "Dyn-Zero", "Dyn-CF", "Dyn-Sh-Naive", "Dyn-Sh-Aware"]
+  },
+  "acceptance_reference": {
+    "long_slo_delta_pp": 10.0,
+    "goodput_delta_pct": 20.0,
+    "short_slo_drop_max_pp": 1.0
+  }
+}

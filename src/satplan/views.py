@@ -247,7 +247,7 @@ class ForecastView(LocalStateView):
         extra = req if joining else None
         it_lit = self.iter_of_at(j, 1.0, extra)
         it_ecl = self.iter_of_at(j, self.f_eclipse, extra)
-        left = req.remaining
+        left = req.predicted_remaining
         if left <= 0:
             return t0
         for a, b, ecl in self.power_segments(j, t0):

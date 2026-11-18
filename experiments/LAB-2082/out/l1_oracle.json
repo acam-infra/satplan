@@ -1,0 +1,37 @@
+{
+  "seed": 101,
+  "n_requests": 6,
+  "enum_scope": 4096,
+  "oracle_best_good": 6,
+  "oracle_best_frac": 1.0,
+  "oracle_best_sched": [
+    4,
+    4,
+    4,
+    4,
+    4,
+    4
+  ],
+  "arms": {
+    "Static": {
+      "good": 0,
+      "good_frac": 0.0
+    },
+    "Dyn-Zero": {
+      "good": 6,
+      "good_frac": 1.0
+    },
+    "Dyn-CF": {
+      "good": 6,
+      "good_frac": 1.0
+    },
+    "Dyn-Sh-Naive": {
+      "good": 6,
+      "good_frac": 1.0
+    },
+    "Dyn-Sh-Aware": {
+      "good": 6,
+      "good_frac": 1.0
+    }
+  }
+}
