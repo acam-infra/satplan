@@ -1,0 +1,79 @@
+{
+  "issue": "LAB-2084",
+  "git_sha": "583b8337603c",
+  "host": "2beb15b237a0",
+  "wall_s": 1.36,
+  "effective_cfg": {
+    "name": "lab2084-demand-validation",
+    "delivery": "final",
+    "rs_downlink": false,
+    "horizon_s": 320.0,
+    "control_period_s": 2.0,
+    "frame_s": 5.0,
+    "rebalance_invariants": {
+      "interval_s": 5.0,
+      "max_inflight": 24,
+      "max_mig_per_req": 4
+    },
+    "model": {
+      "layers": 32,
+      "kv_heads": 8,
+      "head_dim": 128,
+      "bytes_per_elem": 2
+    },
+    "gpu": {
+      "kv_gib": 24.0,
+      "t_fixed_s": 0.003,
+      "t_weights_s": 0.01,
+      "t_kv_tok_s": 1e-07,
+      "t_seq_s": 5e-05,
+      "mem_freq_exp": 0.6
+    },
+    "power": {
+      "P_idle": 60,
+      "P_max": 300,
+      "gamma": 2.4,
+      "f_min": 0.35,
+      "P_dark": 80,
+      "eclipse_dod_budget_j": 1000.0,
+      "tiers": [
+        {
+          "name": "idle_0w",
+          "power_w": 0.0,
+          "clock_f": 0.0
+        },
+        {
+          "name": "low_20w",
+          "power_w": 20.0,
+          "clock_f": 0.35
+        },
+        {
+          "name": "high_300w",
+          "power_w": 300.0,
+          "clock_f": 1.0
+        }
+      ]
+    },
+    "thermal": {
+      "T0_C": 25.0,
+      "T_amb_C": 20.0,
+      "T_max_C": 85.0,
+      "R_th": 0.25,
+      "C_th": 150.0
+    },
+    "net": {
+      "link_gbps": {
+        "intra": 10.0,
+        "inter": 0.6,
+        "rs": 5.0
+      },
+      "hop_latency_s": 0.005
+    },
+    "workload": {
+      "arrival_window_s": 25.0
+    },
+    "slo": {
+      "max_stall_frac": 0.1
+    }
+  }
+}

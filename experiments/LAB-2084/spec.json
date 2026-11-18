@@ -1,0 +1,47 @@
+{
+  "issue": "LAB-2084",
+  "base_commit": "583b8337603c",
+  "rebalance": {
+    "interval_s": 5.0,
+    "max_inflight": 24,
+    "max_mig_per_req": 4,
+    "max_orders_per_round": 4
+  },
+  "horizon_s": 320.0,
+  "goodput_window_s": 25.0,
+  "dev_seeds": [101, 102, 103],
+  "val_seeds": [142, 143, 144, 145, 146],
+  "arms": ["Static", "Dyn-CF"],
+  "anchor_repro": {
+    "6sat_seed": 142,
+    "6sat_n_short": 24,
+    "6sat_n_long": 24,
+    "6sat_ratio": 2.0,
+    "6sat_dl_off_s": 195.0,
+    "24sat_seeds": [142, 143, 144, 145, 146],
+    "24sat_n_short": 96,
+    "24sat_n_long": 96,
+    "24sat_ratio": 2.0,
+    "24sat_dl_off_s": 195.0
+  },
+  "budget_grid_6sat": [
+    {"id": "mod_1.0x", "n_short": 24, "n_long": 12, "dl_off_s": 255.0, "ratio": 1.0, "post_k": 0, "neg_mode": "none"},
+    {"id": "mod_1.5x", "n_short": 24, "n_long": 12, "dl_off_s": 255.0, "ratio": 1.5, "post_k": 0, "neg_mode": "none"},
+    {"id": "mod_2.0x", "n_short": 24, "n_long": 12, "dl_off_s": 255.0, "ratio": 2.0, "post_k": 0, "neg_mode": "none"},
+    {"id": "mod_1.0x_post4", "n_short": 24, "n_long": 12, "dl_off_s": 255.0, "ratio": 1.0, "post_k": 4, "neg_mode": "none"},
+    {"id": "mod_2.0x_no_contact", "n_short": 24, "n_long": 12, "dl_off_s": 255.0, "ratio": 2.0, "post_k": 0, "neg_mode": "no_contact"},
+    {"id": "mod_2.0x_no_spare", "n_short": 24, "n_long": 12, "dl_off_s": 255.0, "ratio": 2.0, "post_k": 0, "neg_mode": "no_spare"},
+    {"id": "hp_1.0x", "n_short": 24, "n_long": 24, "dl_off_s": 195.0, "ratio": 1.0, "post_k": 0, "neg_mode": "none"},
+    {"id": "hp_2.0x", "n_short": 24, "n_long": 24, "dl_off_s": 195.0, "ratio": 2.0, "post_k": 0, "neg_mode": "none"},
+    {"id": "hp_2.0x_no_contact", "n_short": 24, "n_long": 24, "dl_off_s": 195.0, "ratio": 2.0, "post_k": 0, "neg_mode": "no_contact"}
+  ],
+  "direction_24sat": [
+    {"id": "sat24_mod_2.0x", "nodes": 24, "n_short": 96, "n_long": 48, "dl_off_s": 255.0, "ratio": 2.0},
+    {"id": "sat24_hp_2.0x", "nodes": 24, "n_short": 96, "n_long": 96, "dl_off_s": 195.0, "ratio": 2.0}
+  ],
+  "acceptance_reference": {
+    "long_slo_delta_pp": 10.0,
+    "goodput_delta_pct": 20.0,
+    "short_slo_drop_max_pp": 1.0
+  }
+}
